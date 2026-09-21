@@ -1,0 +1,46 @@
+input:
+  pgn_path: "data/input/opponent.pgn"
+
+output:
+  report_path: "data/reports/report.md"
+  json_path: "data/reports/report.json"
+  critical_pgn_path: "data/reports/critical_positions.pgn"
+
+target_player:
+  # If empty, the loader will auto-detect the most frequent Black player in the PGN.
+  name: ""
+
+stockfish:
+  path: "/usr/games/stockfish"
+  threads: 8
+  hash_mb: 1024
+
+analysis:
+  main_depth: 18
+  critical_depth: 24
+  main_multipv: 1
+  critical_multipv: 3
+
+  # Centipawn-loss thresholds (from the target player's perspective)
+  inaccuracy_cp: 50
+  mistake_cp: 100
+  blunder_cp: 200
+
+  # Threshold above which a position is flagged for Stage-2 deep analysis
+  critical_cp: 150
+
+  analyze_opening_plies: 20
+
+  # Minimum sample size required to report a statistical pattern
+  min_sample_size: 8
+  reliable_sample_size: 20
+
+performance:
+  workers: 1
+
+cache:
+  db_path: "data/cache/engine_cache.sqlite"
+
+logging:
+  log_path: "data/logs/app.log"
+  level: "INFO"
