@@ -44,3 +44,15 @@ cache:
 logging:
   log_path: "data/logs/app.log"
   level: "INFO"
+
+llm:
+  # AI explanation layer (Gemini). Used only for top recurring patterns,
+  # critical positions, and the final preparation summary - never per move.
+  # Disabled automatically if the API key is missing or the call fails;
+  # the structured, data-only report is always generated regardless.
+  enabled: true
+  model: "gemini-3.6-flash"
+  # Name of the environment variable holding the API key (see .env.example).
+  api_key_env: "GEMINI_API_KEY"
+  max_patterns: 10
+  max_critical_positions: 20

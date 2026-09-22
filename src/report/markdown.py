@@ -6,7 +6,20 @@ class MarkdownReportGenerator:
     """Generates a comprehensive Markdown Opponent Scout Report based on statistical and chess analysis."""
 
     @staticmethod
-    def generate_report(profile: OpponentProfile, output_path: str) -> str:
+    def generate_report(
+        profile: OpponentProfile,
+        output_path: str,
+        llm_notes: Dict[str, Any] = None,
+    ) -> str:
+        """Generate the Markdown report.
+
+        llm_notes, when provided, holds optional AI-generated prose keyed by
+        "patterns", "critical_positions", "final_summary" - produced by
+        LLMExplainer from this same structured data. Any key missing or None
+        (LLM disabled/unavailable) is simply skipped; the structured,
+        data-only report below is always generated regardless.
+        """
+        llm_notes = llm_notes or {}
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         lines: List[str] = []
 
@@ -101,6 +114,16 @@ class MarkdownReportGenerator:
             lines.append(f"- **PV Line:** `{' '.join(pos.pv[:5])}`")
             lines.append(f"- **Data Notes:** Stockfish evaluates played move as -{pos.loss_for_player:.1f} cp relative to top engine choice.\n")
 
+        if llm_notes.get("critical_positions"):
+            lines.append("### AI Notes on Critical Positions\n")
+            lines.append(
+                "_Generated from the structured data above by the LLM explanation "
+                "layer; grounded only in CPL/classification/PV, never a substitute "
+                "for the raw engine data._\n"
+            )
+            lines.append(llm_notes["critical_positions"])
+            lines.append("\n")
+
         lines.append("## 11. Repeated Mistakes\n")
         if not profile.top_recurring_patterns:
             lines.append("No repeated pattern mistakes detected across multiple games.")
@@ -109,6 +132,15 @@ class MarkdownReportGenerator:
                 lines.append(f"- Pattern `{pat.pattern_id}` observed in {pat.occurrences} games (Sample games: {', '.join(pat.sample_games[:5])}). Moves played: {pat.played_moves}.")
         lines.append("\n")
 
+        if llm_notes.get("patterns"):
+            lines.append("### AI Notes on Recurring Patterns\n")
+            lines.append(
+                "_Generated from the structured pattern data above; hedged "
+                "language reflects sample size, not certainty._\n"
+            )
+            lines.append(llm_notes["patterns"])
+            lines.append("\n")
+
         lines.append("## 12. Practical Preparation\n")
         lines.append("### Recommended Preparation Tree\n")
         lines.append("Based strictly on sample data, recommended focus areas when preparing against this opponent playing Black:\n")
@@ -116,6 +148,15 @@ class MarkdownReportGenerator:
             lines.append(f"{idx}. **{item.opening_name} ({item.eco})** - Represents {item.summary.sample_size / max(1, profile.total_games_analyzed):.1%} of sample. (Sample size: {item.summary.sample_size}, Confidence: `{item.summary.confidence_level.value}`).")
             if item.summary.baseline_cpl_diff > 0:
                 lines.append(f"   - *Observation:* Opponent exhibits higher centipawn loss ({item.summary.mean_cpl:.1f} cp) in this opening compared to baseline ({profile.overall_stats.mean_cpl:.1f} cp).")
+
+        if llm_notes.get("final_summary"):
+            lines.append("\n### AI Preparation Summary\n")
+            lines.append(
+                "_Generated from the structured statistics in this report; "
+                "not a standalone conclusion - cross-check against the raw "
+                "data above._\n"
+            )
+            lines.append(llm_notes["final_summary"])
 
         content = "\n".join(lines)
         with open(output_path, "w", encoding="utf-8") as f:
