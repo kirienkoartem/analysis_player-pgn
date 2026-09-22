@@ -101,7 +101,11 @@ class GameAnalyzer:
                 opening=opening,
                 pv=pv,
                 wdl=wdl,
-                is_critical=is_critical
+                is_critical=is_critical,
+                error_category="NONE"
+            )
+            analysis_data.error_category = ErrorAnalyzer.categorize_mistake(
+                analysis_data, board_before, board_after
             )
 
             move_analyses.append(analysis_data)

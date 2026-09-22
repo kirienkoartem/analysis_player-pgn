@@ -73,9 +73,11 @@ def load_pgn_games(pgn_path: str, target_player: str = "", limit: Optional[int] 
             total_in_file += 1
             raw_games.append(game)
             index += 1
-            if limit and len(raw_games) >= limit and not target_player:
-                # If no target player specified yet and limit reached, stop
-                pass
+            # Only safe to stop reading early when the target player is already
+            # known: auto-detection (below) needs the full file to find the
+            # most frequent Black player, so it can't be short-circuited here.
+            if limit and target_player and len(raw_games) >= limit:
+                break
 
     if not target_player and raw_games:
         target_player = PGNFilter.auto_detect_black_player(raw_games)

@@ -5,7 +5,7 @@ from src.engine.classification import MoveAnalysisData
 @dataclass
 class ProblemCluster:
     cluster_id: str
-    category: str  # e.g., OPENING, TACTICAL, POSITIONAL, MIDDLEGAME, ENDGAME
+    category: str  # TACTICAL, POSITIONAL, CALCULATION, OPENING, ENDGAME, or UNCLASSIFIED
     opening_or_variation: str
     occurrences: int
     error_rate: float
@@ -19,9 +19,20 @@ class ErrorClusterer:
     def cluster_mistakes(move_analyses: List[MoveAnalysisData]) -> List[ProblemCluster]:
         mistakes = [m for m in move_analyses if m.classification != "GOOD"]
 
+        # Total moves played in each error_category|opening bucket (mistakes +
+        # good moves), used as the denominator for the bucket's error rate.
+        # Grouping by error_category (TACTICAL/POSITIONAL/CALCULATION/OPENING/
+        # ENDGAME/UNCLASSIFIED) rather than game phase, since the Markdown
+        # report's "Tactical Problems"/"Positional Problems" sections filter
+        # clusters by these exact category values.
+        totals: Dict[str, int] = {}
+        for m in move_analyses:
+            key = f"{m.error_category}|{m.opening}"
+            totals[key] = totals.get(key, 0) + 1
+
         groups: Dict[str, List[MoveAnalysisData]] = {}
         for m in mistakes:
-            key = f"{m.phase}|{m.opening}"
+            key = f"{m.error_category}|{m.opening}"
             if key not in groups:
                 groups[key] = []
             groups[key].append(m)
@@ -30,8 +41,10 @@ class ErrorClusterer:
         cid = 1
 
         for key, m_list in groups.items():
-            phase, op_name = key.split("|", 1)
+            category, op_name = key.split("|", 1)
             occ = len(m_list)
+            total = totals.get(key, occ)
+            error_rate = occ / total if total > 0 else 0.0
             cpls = [m.loss_for_player for m in m_list]
             avg_cpl = sum(cpls) / occ if occ > 0 else 0.0
             sorted_cpls = sorted(cpls)
@@ -39,10 +52,10 @@ class ErrorClusterer:
 
             clusters.append(ProblemCluster(
                 cluster_id=f"PROB_{cid:03d}",
-                category=phase,
+                category=category,
                 opening_or_variation=op_name,
                 occurrences=occ,
-                error_rate=1.0,
+                error_rate=error_rate,
                 avg_cpl=avg_cpl,
                 median_cpl=median_cpl,
                 moves=m_list

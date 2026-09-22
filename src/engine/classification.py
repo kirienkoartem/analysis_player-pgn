@@ -44,6 +44,7 @@ class MoveAnalysisData:
     pv: List[str]
     wdl: Optional[List[float]] = None
     is_critical: bool = False
+    error_category: str = "NONE"  # TACTICAL/POSITIONAL/CALCULATION/OPENING/ENDGAME/UNCLASSIFIED/NONE
 
 def normalize_eval_for_black(engine_eval: EngineEvaluation) -> float:
     """

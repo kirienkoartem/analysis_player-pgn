@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
+import chess
 from src.engine.classification import MoveAnalysisData
 
 @dataclass
@@ -47,10 +48,24 @@ class OpeningAnalyzer:
                         opening=item.opening,
                         move_number=item.move_number,
                         played_san=item.san,
-                        best_san=item.best_move,
+                        best_san=self._uci_to_san(item.fen_before, item.best_move),
                         fen_before=item.fen_before,
                         cpl=item.loss_for_player,
                         eval_after_black=item.eval_after_black_perspective
                     ))
 
         return deviations
+
+    @staticmethod
+    def _uci_to_san(fen_before: str, best_move_uci: str) -> str:
+        """Convert the engine's UCI best move to SAN for the given position.
+
+        Falls back to the raw UCI string if the position/move can't be parsed
+        (e.g. malformed data), rather than raising and aborting the report.
+        """
+        try:
+            board = chess.Board(fen_before)
+            move = chess.Move.from_uci(best_move_uci)
+            return board.san(move)
+        except (ValueError, AssertionError):
+            return best_move_uci
