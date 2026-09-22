@@ -51,8 +51,19 @@ class StockfishEngine:
         self,
         board: chess.Board,
         depth: int = 18,
-        multipv: int = 1
+        multipv: int = 1,
+        movetime_ms: Optional[int] = None
     ) -> EngineEvaluation:
+        """Analyze one position.
+
+        On slow/shared CPUs, a fixed search depth can take wildly varying
+        wall-clock time per position, making total run time unpredictable.
+        When movetime_ms is given, we bound search by time instead - the
+        engine searches as deep as it can within that budget - which is
+        what lets a full batch run fit in a fixed time window regardless of
+        host CPU speed. depth is still recorded on the returned evaluation
+        for cache-key/reporting purposes even when time-limited.
+        """
         if not self.engine_process:
             # Fallback mock evaluation when Stockfish binary is unavailable
             return EngineEvaluation(
@@ -64,9 +75,14 @@ class StockfishEngine:
                 pv=[]
             )
 
+        limit = (
+            chess.engine.Limit(time=movetime_ms / 1000.0)
+            if movetime_ms
+            else chess.engine.Limit(depth=depth)
+        )
         info = self.engine_process.analyse(
             board,
-            limit=chess.engine.Limit(depth=depth),
+            limit=limit,
             multipv=multipv
         )
 

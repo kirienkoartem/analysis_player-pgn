@@ -39,12 +39,19 @@ class SQLiteEngineCache:
             conn.commit()
 
     @staticmethod
-    def generate_cache_key(fen: str, depth: int, multipv: int, engine_version: str) -> str:
-        raw_str = f"{fen}|depth:{depth}|multipv:{multipv}|ver:{engine_version}"
+    def generate_cache_key(
+        fen: str, depth: int, multipv: int, engine_version: str, movetime_ms: Optional[int] = None
+    ) -> str:
+        # movetime_ms is part of the key: a time-bounded search and a
+        # depth-bounded search at the "same" depth label are not the same
+        # result, and must never share a cache entry.
+        raw_str = f"{fen}|depth:{depth}|multipv:{multipv}|ver:{engine_version}|mt:{movetime_ms or 0}"
         return hashlib.sha256(raw_str.encode('utf-8')).hexdigest()
 
-    def get(self, fen: str, depth: int, multipv: int, engine_version: str) -> Optional[EngineEvaluation]:
-        cache_key = self.generate_cache_key(fen, depth, multipv, engine_version)
+    def get(
+        self, fen: str, depth: int, multipv: int, engine_version: str, movetime_ms: Optional[int] = None
+    ) -> Optional[EngineEvaluation]:
+        cache_key = self.generate_cache_key(fen, depth, multipv, engine_version, movetime_ms)
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -67,8 +74,16 @@ class SQLiteEngineCache:
                 )
         return None
 
-    def set(self, fen: str, depth: int, multipv: int, engine_version: str, eval_obj: EngineEvaluation):
-        cache_key = self.generate_cache_key(fen, depth, multipv, engine_version)
+    def set(
+        self,
+        fen: str,
+        depth: int,
+        multipv: int,
+        engine_version: str,
+        eval_obj: EngineEvaluation,
+        movetime_ms: Optional[int] = None,
+    ):
+        cache_key = self.generate_cache_key(fen, depth, multipv, engine_version, movetime_ms)
         pv_json = json.dumps(eval_obj.pv)
         wdl_json = json.dumps(eval_obj.wdl) if eval_obj.wdl is not None else None
 
@@ -92,16 +107,22 @@ class PositionEvaluator:
         self.cache_hits = 0
         self.engine_calls = 0
 
-    def evaluate_board(self, board: chess.Board, depth: int = 18, multipv: int = 1) -> EngineEvaluation:
+    def evaluate_board(
+        self,
+        board: chess.Board,
+        depth: int = 18,
+        multipv: int = 1,
+        movetime_ms: Optional[int] = None,
+    ) -> EngineEvaluation:
         fen = board.fen()
         engine_ver = self.engine.version_info
 
-        cached = self.cache.get(fen, depth, multipv, engine_ver)
+        cached = self.cache.get(fen, depth, multipv, engine_ver, movetime_ms)
         if cached:
             self.cache_hits += 1
             return cached
 
         self.engine_calls += 1
-        result = self.engine.analyze_position(board, depth=depth, multipv=multipv)
-        self.cache.set(fen, depth, multipv, engine_ver, result)
+        result = self.engine.analyze_position(board, depth=depth, multipv=multipv, movetime_ms=movetime_ms)
+        self.cache.set(fen, depth, multipv, engine_ver, result, movetime_ms)
         return result

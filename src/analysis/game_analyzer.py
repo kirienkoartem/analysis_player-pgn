@@ -27,6 +27,11 @@ class GameAnalyzer:
         self.main_multipv = analysis_cfg.get("main_multipv", 1)
         self.critical_multipv = analysis_cfg.get("critical_multipv", 3)
         self.critical_cp = analysis_cfg.get("critical_cp", 150)
+        # Optional time-bounded search (ms). When set, overrides fixed-depth
+        # search so total batch run time is predictable regardless of host
+        # CPU speed - depth becomes just a cache-key/reporting label.
+        self.main_movetime_ms = analysis_cfg.get("main_movetime_ms")
+        self.critical_movetime_ms = analysis_cfg.get("critical_movetime_ms")
 
     def analyze_game(self, record: GameRecord) -> List[MoveAnalysisData]:
         game_id = record.metadata.game_id
@@ -41,10 +46,12 @@ class GameAnalyzer:
 
             # Stage 1: Mass analysis
             eval_before_stage1 = self.evaluator.evaluate_board(
-                board_before, depth=self.main_depth, multipv=self.main_multipv
+                board_before, depth=self.main_depth, multipv=self.main_multipv,
+                movetime_ms=self.main_movetime_ms
             )
             eval_after_stage1 = self.evaluator.evaluate_board(
-                board_after, depth=self.main_depth, multipv=self.main_multipv
+                board_after, depth=self.main_depth, multipv=self.main_multipv,
+                movetime_ms=self.main_movetime_ms
             )
 
             score_before_black = normalize_eval_for_black(eval_before_stage1)
@@ -63,10 +70,12 @@ class GameAnalyzer:
             # Stage 2: Deep analysis for critical positions
             if is_critical and self.evaluator.engine.is_available():
                 eval_before_stage2 = self.evaluator.evaluate_board(
-                    board_before, depth=self.critical_depth, multipv=self.critical_multipv
+                    board_before, depth=self.critical_depth, multipv=self.critical_multipv,
+                    movetime_ms=self.critical_movetime_ms
                 )
                 eval_after_stage2 = self.evaluator.evaluate_board(
-                    board_after, depth=self.critical_depth, multipv=1
+                    board_after, depth=self.critical_depth, multipv=1,
+                    movetime_ms=self.critical_movetime_ms
                 )
 
                 score_before_black_d2 = normalize_eval_for_black(eval_before_stage2)

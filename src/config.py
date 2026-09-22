@@ -31,6 +31,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "mistake_cp": 100,
         "blunder_cp": 200,
         "critical_cp": 150,
+        "main_movetime_ms": None,
+        "critical_movetime_ms": None,
         "analyze_opening_plies": 20,
         "min_sample_size": 8,
         "reliable_sample_size": 20
