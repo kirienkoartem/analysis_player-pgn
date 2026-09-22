@@ -12,8 +12,10 @@ target_player:
 
 stockfish:
   path: "/usr/games/stockfish"
-  threads: 8
-  hash_mb: 1024
+  # This container has 4 CPU cores; requesting more Threads than that just
+  # causes thread contention and slows Stockfish down, not speeds it up.
+  threads: 3
+  hash_mb: 512
 
 analysis:
   main_depth: 18
