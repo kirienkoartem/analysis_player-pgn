@@ -24,7 +24,7 @@ analysis:
   # Kept at 1 (not the usual 3) purely for this 1-hour speed run - MultiPV
   # scales search cost roughly with N, and time is the binding constraint
   # here, not analysis richness. Raise back to 3 for slower/unconstrained runs.
-  critical_multipv: 1
+  critical_multipv: 3
 
   # Hard-budget mode: bound each engine call by wall-clock time instead of
   # depth, so total run time is predictable regardless of host CPU speed
@@ -33,8 +33,8 @@ analysis:
   # results/cache keys for reporting; movetime is what actually governs
   # search time when set. Remove/null these two keys to go back to
   # pure fixed-depth search once running on faster/dedicated hardware.
-  main_movetime_ms: 40
-  critical_movetime_ms: 100
+  main_movetime_ms: 260
+  critical_movetime_ms: 900
 
   # Centipawn-loss thresholds (from the target player's perspective)
   inaccuracy_cp: 50
