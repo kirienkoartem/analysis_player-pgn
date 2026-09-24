@@ -22,16 +22,17 @@ class MarkdownReportGenerator:
         llm_notes = llm_notes or {}
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         lines: List[str] = []
+        color_label = profile.target_color.capitalize()  # "White" or "Black"
 
-        lines.append(f"# OPPONENT SCOUT REPORT: {profile.target_player_name.upper()}\n")
+        lines.append(f"# OPPONENT SCOUT REPORT: {profile.target_player_name.upper()} ({color_label.upper()})\n")
         lines.append("## 1. Executive Summary\n")
         lines.append(f"- **Target Player:** {profile.target_player_name}")
-        lines.append(f"- **Total Games Analyzed (as Black):** {profile.total_games_analyzed}")
+        lines.append(f"- **Total Games Analyzed (as {color_label}):** {profile.total_games_analyzed}")
         lines.append(f"- **Overall Results:** {profile.overall_stats.wins} Wins, {profile.overall_stats.draws} Draws, {profile.overall_stats.losses} Losses (Win Rate: {profile.overall_stats.win_rate:.1%})")
         lines.append(f"- **Overall Mean CPL:** {profile.overall_stats.mean_cpl:.1f} cp | **Median CPL:** {profile.overall_stats.median_cpl:.1f} cp")
         lines.append(f"- **Statistical Sample Confidence:** `{profile.overall_stats.confidence_level.value}`\n")
 
-        lines.append("## 2. Black Repertoire\n")
+        lines.append(f"## 2. {color_label} Repertoire\n")
         lines.append("| Opening | ECO | Games | Win% | Draw% | Loss% | Avg CPL | Median CPL | Baseline Diff | Sample Confidence |")
         lines.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
 
@@ -43,7 +44,7 @@ class MarkdownReportGenerator:
         lines.append("\n")
 
         lines.append("## 3. Most Played Variations\n")
-        lines.append("Black's most frequent opening responses and branching frequencies:\n")
+        lines.append(f"{color_label}'s most frequent opening responses and branching frequencies:\n")
         for item in profile.repertoire[:5]:
             lines.append(f"- **{item.eco} - {item.opening_name}** ({item.summary.sample_size} games, Mean CPL: {item.summary.mean_cpl:.1f})")
         lines.append("\n")
@@ -141,9 +142,24 @@ class MarkdownReportGenerator:
             lines.append(llm_notes["patterns"])
             lines.append("\n")
 
-        lines.append("## 12. Practical Preparation\n")
+        tt = profile.time_trouble_summary
+        if tt and (tt.get("time_trouble") or tt.get("normal_time")):
+            lines.append("## 12. Time Trouble Analysis\n")
+            lines.append(
+                "Moves played with <=30s on the clock (per PGN %clk data) vs moves with more time:\n"
+            )
+            for label, key in [("Time trouble (<=30s)", "time_trouble"), ("Normal time", "normal_time")]:
+                bucket = tt.get(key)
+                if not bucket:
+                    continue
+                lines.append(
+                    f"- **{label}:** {bucket['count']} moves, error rate {bucket['error_rate']:.1%}, avg CPL {bucket['avg_cpl']:.1f}"
+                )
+            lines.append("\n")
+
+        lines.append("## 13. Practical Preparation\n")
         lines.append("### Recommended Preparation Tree\n")
-        lines.append("Based strictly on sample data, recommended focus areas when preparing against this opponent playing Black:\n")
+        lines.append(f"Based strictly on sample data, recommended focus areas when preparing against this opponent playing {color_label}:\n")
         for idx, item in enumerate(profile.repertoire[:3], start=1):
             lines.append(f"{idx}. **{item.opening_name} ({item.eco})** - Represents {item.summary.sample_size / max(1, profile.total_games_analyzed):.1%} of sample. (Sample size: {item.summary.sample_size}, Confidence: `{item.summary.confidence_level.value}`).")
             if item.summary.baseline_cpl_diff > 0:

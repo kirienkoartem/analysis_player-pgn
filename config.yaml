@@ -7,8 +7,12 @@ output:
   critical_pgn_path: "data/reports/critical_positions.pgn"
 
 target_player:
-  # If empty, the loader will auto-detect the most frequent Black player in the PGN.
+  # If empty, the loader will auto-detect the most frequent player of the
+  # given color in the PGN.
   name: ""
+  # "white", "black", or "both" (runs the full pipeline twice, once per
+  # color, writing separate report_white.*/report_black.* output files).
+  color: "black"
 
 stockfish:
   path: "/usr/games/stockfish"
@@ -33,8 +37,9 @@ analysis:
   # results/cache keys for reporting; movetime is what actually governs
   # search time when set. Remove/null these two keys to go back to
   # pure fixed-depth search once running on faster/dedicated hardware.
-  main_movetime_ms: 220
-  critical_movetime_ms: 780
+  # 13h-deep-run calibration for 1191 games on this host.
+  main_movetime_ms: 500
+  critical_movetime_ms: 1500
 
   # Centipawn-loss thresholds (from the target player's perspective)
   inaccuracy_cp: 50
@@ -45,6 +50,10 @@ analysis:
   critical_cp: 150
 
   analyze_opening_plies: 20
+
+  # A move played with this many seconds or fewer left on the clock (per
+  # PGN %clk data) is flagged as played under time trouble.
+  time_pressure_threshold_sec: 30
 
   # Minimum sample size required to report a statistical pattern
   min_sample_size: 8

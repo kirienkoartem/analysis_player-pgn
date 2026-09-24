@@ -61,16 +61,20 @@ class StatisticsAggregator:
     @staticmethod
     def compute_statistical_summary(
         cpl_list: List[float],
-        results_list: List[str],  # list of "1-0", "0-1", "1/2-1/2" (from Black perspective: "0-1" is Black win, "1-0" is Black loss)
+        results_list: List[str],  # list of PGN Result strings: "1-0", "0-1", "1/2-1/2"
         baseline_mean_cpl: float = 0.0,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        color: str = "black"
     ) -> StatisticalSummary:
         sample_size = len(results_list)
         conf_level = StatisticsAggregator.classify_sample_size(sample_size, config)
 
-        wins = sum(1 for r in results_list if r == "0-1")
+        win_result = "1-0" if color == "white" else "0-1"
+        loss_result = "0-1" if color == "white" else "1-0"
+
+        wins = sum(1 for r in results_list if r == win_result)
         draws = sum(1 for r in results_list if r == "1/2-1/2")
-        losses = sum(1 for r in results_list if r == "1-0")
+        losses = sum(1 for r in results_list if r == loss_result)
 
         w_rate = wins / sample_size if sample_size > 0 else 0.0
         d_rate = draws / sample_size if sample_size > 0 else 0.0

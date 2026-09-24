@@ -29,6 +29,7 @@ def test_reports_generation(tmp_path):
 
     profile = OpponentProfile(
         target_player_name="Test Opponent",
+            target_color="black",
         total_games_analyzed=2,
         overall_stats=summary,
         repertoire=[],

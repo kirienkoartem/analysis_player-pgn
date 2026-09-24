@@ -150,7 +150,7 @@ class LLMExplainer:
     def explain_final_summary(self, profile: OpponentProfile) -> Optional[str]:
         """One batched call producing the final 'Preparation Summary' prose."""
         lines = [
-            f"Target player (Black): {profile.target_player_name}",
+            f"Target player ({profile.target_color.capitalize()}): {profile.target_player_name}",
             f"Total games analyzed: {profile.total_games_analyzed}",
             f"Overall baseline avg CPL: {profile.overall_stats.mean_cpl:.1f} "
             f"(sample_size={profile.overall_stats.sample_size}, "

@@ -18,8 +18,12 @@ class PGNExporter:
                 game.headers["Site"] = "Local Analysis"
                 game.headers["Date"] = "????.??.??"
                 game.headers["Round"] = str(idx)
-                game.headers["White"] = "Opponent Scout"
-                game.headers["Black"] = profile.target_player_name
+                if profile.target_color == "white":
+                    game.headers["White"] = profile.target_player_name
+                    game.headers["Black"] = "Opponent Scout"
+                else:
+                    game.headers["White"] = "Opponent Scout"
+                    game.headers["Black"] = profile.target_player_name
                 game.headers["Result"] = "*"
                 game.headers["SetUp"] = "1"
                 game.headers["FEN"] = pos.fen_before

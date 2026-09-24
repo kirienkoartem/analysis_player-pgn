@@ -1,5 +1,6 @@
 import sys
 import os
+import copy
 
 # Add root project directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -18,6 +19,70 @@ from src.report.report_generator import ReportGenerator
 
 logger = logging.getLogger("main")
 
+
+def _color_suffixed_path(path: str, color: str) -> str:
+    """Inserts a color suffix before the file extension, e.g. report.md -> report_white.md."""
+    root, ext = os.path.splitext(path)
+    return f"{root}_{color}{ext}"
+
+
+def run_pipeline_for_color(config: Dict[str, Any], args, engine: StockfishEngine, color: str) -> None:
+    """Runs validate/analyze/report/export/all for a single color (white or black)."""
+    run_config = copy.deepcopy(config)
+    run_config["target_player"]["color"] = color
+
+    if config["target_player"].get("color") == "both":
+        # Keep each color's outputs in separate files so they don't clobber each other.
+        for key in ("report_path", "json_path", "critical_pgn_path"):
+            run_config["output"][key] = _color_suffixed_path(config["output"][key], color)
+
+    pgn_path = run_config["input"]["pgn_path"]
+    target_player = run_config["target_player"]["name"]
+
+    print(f"\n--- Studying '{target_player or '[AUTO-DETECT]'}' as {color.upper()} ---")
+
+    if args.command == "validate":
+        if not os.path.exists(pgn_path):
+            print(f"Error: File '{pgn_path}' does not exist.")
+            sys.exit(1)
+        res = load_pgn_games(pgn_path, target_player=target_player, limit=args.limit, color=color)
+        print(f"Total games in PGN: {res.total_games_in_pgn}")
+        print(f"Auto-detected Target Player: {res.target_player}")
+        print(f"Filtered {color.capitalize()} Games: {len(res.filtered_games)}")
+        print(f"Skipped Games: {len(res.skipped_games)}")
+        for sk in res.skipped_games[:5]:
+            print(f" - Game #{sk.index}: {sk.reason}")
+        print("Validation COMPLETE.")
+        return
+
+    if args.command in ("analyze", "report", "export", "all"):
+        if not os.path.exists(pgn_path):
+            print(f"Error: File '{pgn_path}' does not exist.")
+            sys.exit(1)
+
+        batch_analyzer = BatchAnalyzer(run_config, engine=engine)
+        batch_res = batch_analyzer.analyze_batch(limit=args.limit)
+
+        op_analyzer = OpeningAnalyzer(run_config)
+        deviations = op_analyzer.find_opening_deviations(batch_res.move_analyses)
+
+        pat_analyzer = PatternAnalyzer(run_config)
+        patterns = pat_analyzer.detect_recurring_patterns(batch_res.move_analyses)
+
+        if args.command in ("report", "export", "all"):
+            report_gen = ReportGenerator(run_config)
+            report_gen.generate_all_reports(
+                pgn_result=batch_res.pgn_result,
+                move_analyses=batch_res.move_analyses,
+                patterns=patterns,
+                deviations=deviations
+            )
+            print("Analysis & Reports Generated Successfully!")
+            print(f" - Markdown Report: {run_config['output']['report_path']}")
+            print(f" - JSON Report: {run_config['output']['json_path']}")
+            print(f" - Critical Positions PGN: {run_config['output']['critical_pgn_path']}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Opponent Scout: Chess PGN Statistical & Engine Analysis System for Opponent Preparation"
@@ -27,7 +92,8 @@ def main():
                         help="Action command to execute")
     parser.add_argument("--config", default="config.yaml", help="Path to YAML configuration file")
     parser.add_argument("--pgn", help="Path to input PGN file")
-    parser.add_argument("--player", help="Target opponent name (filters Black games)")
+    parser.add_argument("--player", help="Target opponent name")
+    parser.add_argument("--color", choices=["white", "black", "both"], help="Which color the target player is studied for")
     parser.add_argument("--depth", type=int, help="Engine main search depth")
     parser.add_argument("--critical-depth", type=int, help="Engine deep search depth for critical positions")
     parser.add_argument("--threads", type=int, help="Stockfish threads")
@@ -44,6 +110,8 @@ def main():
         config["input"]["pgn_path"] = args.pgn
     if args.player is not None:
         config["target_player"]["name"] = args.player
+    if args.color is not None:
+        config["target_player"]["color"] = args.color
     if args.depth:
         config["analysis"]["main_depth"] = args.depth
     if args.critical_depth:
@@ -57,13 +125,15 @@ def main():
 
     pgn_path = config["input"]["pgn_path"]
     target_player = config["target_player"]["name"]
+    color_cfg = config["target_player"].get("color", "black")
 
     print("==================================================")
     print("      OPPONENT SCOUT PGN ANALYSIS SYSTEM          ")
     print("==================================================")
     print(f"Command: {args.command.upper()}")
     print(f"Input PGN: {pgn_path}")
-    print(f"Target Player (Black): {target_player if target_player else '[AUTO-DETECT]'}")
+    print(f"Target Player: {target_player if target_player else '[AUTO-DETECT]'}")
+    print(f"Color: {color_cfg}")
 
     # Initialize Engine
     engine = StockfishEngine(config)
@@ -77,46 +147,9 @@ def main():
     else:
         print("Stockfish Engine: Disabled via --no-engine flag.")
 
-    if args.command == "validate":
-        print("\n--- Validating PGN ---")
-        if not os.path.exists(pgn_path):
-            print(f"Error: File '{pgn_path}' does not exist.")
-            sys.exit(1)
-        res = load_pgn_games(pgn_path, target_player=target_player, limit=args.limit)
-        print(f"Total games in PGN: {res.total_games_in_pgn}")
-        print(f"Auto-detected Target Player: {res.target_player}")
-        print(f"Filtered Black Games: {len(res.filtered_games)}")
-        print(f"Skipped Games: {len(res.skipped_games)}")
-        for sk in res.skipped_games[:5]:
-            print(f" - Game #{sk.index}: {sk.reason}")
-        print("Validation COMPLETE.")
-
-    elif args.command in ("analyze", "report", "export", "all"):
-        if not os.path.exists(pgn_path):
-            print(f"Error: File '{pgn_path}' does not exist.")
-            sys.exit(1)
-
-        batch_analyzer = BatchAnalyzer(config, engine=engine)
-        batch_res = batch_analyzer.analyze_batch(limit=args.limit)
-
-        op_analyzer = OpeningAnalyzer(config)
-        deviations = op_analyzer.find_opening_deviations(batch_res.move_analyses)
-
-        pat_analyzer = PatternAnalyzer(config)
-        patterns = pat_analyzer.detect_recurring_patterns(batch_res.move_analyses)
-
-        if args.command in ("report", "export", "all"):
-            report_gen = ReportGenerator(config)
-            profile = report_gen.generate_all_reports(
-                pgn_result=batch_res.pgn_result,
-                move_analyses=batch_res.move_analyses,
-                patterns=patterns,
-                deviations=deviations
-            )
-            print("\nAnalysis & Reports Generated Successfully!")
-            print(f" - Markdown Report: {config['output']['report_path']}")
-            print(f" - JSON Report: {config['output']['json_path']}")
-            print(f" - Critical Positions PGN: {config['output']['critical_pgn_path']}")
+    colors_to_run = ["white", "black"] if color_cfg == "both" else [color_cfg]
+    for color in colors_to_run:
+        run_pipeline_for_color(config, args, engine, color)
 
     if engine:
         engine.close()

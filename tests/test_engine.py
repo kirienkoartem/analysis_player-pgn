@@ -4,6 +4,7 @@ from src.engine.classification import (
     EngineEvaluation,
     MoveClassification,
     normalize_eval_for_black,
+    normalize_eval_for_player,
     calculate_loss_for_player,
     classify_move
 )
@@ -26,6 +27,33 @@ def test_normalize_eval_for_black():
     # White perspective mate in -3 (Black mates White) -> Black perspective +9970 cp
     eval_mate_black = EngineEvaluation(eval_type="mate", score=-3.0, depth=18)
     assert normalize_eval_for_black(eval_mate_black) == 9970.0
+
+def test_normalize_eval_for_player_white():
+    # White perspective +100 cp -> White perspective stays +100 cp
+    eval_cp_white_plus = EngineEvaluation(eval_type="cp", score=100.0, depth=18)
+    assert normalize_eval_for_player(eval_cp_white_plus, chess.WHITE) == 100.0
+
+    # White perspective -150 cp -> White perspective stays -150 cp
+    eval_cp_white_minus = EngineEvaluation(eval_type="cp", score=-150.0, depth=18)
+    assert normalize_eval_for_player(eval_cp_white_minus, chess.WHITE) == -150.0
+
+    # White mates in +2 -> great for White (+9980 cp)
+    eval_mate_white = EngineEvaluation(eval_type="mate", score=2.0, depth=18)
+    assert normalize_eval_for_player(eval_mate_white, chess.WHITE) == 9980.0
+
+    # Black mates White in -3 -> terrible for White (-9970 cp)
+    eval_mate_black = EngineEvaluation(eval_type="mate", score=-3.0, depth=18)
+    assert normalize_eval_for_player(eval_mate_black, chess.WHITE) == -9970.0
+
+def test_normalize_eval_for_player_matches_black_alias():
+    for score, etype in [(100.0, "cp"), (-150.0, "cp"), (2.0, "mate"), (-3.0, "mate")]:
+        ev = EngineEvaluation(eval_type=etype, score=score, depth=18)
+        assert normalize_eval_for_player(ev, chess.BLACK) == normalize_eval_for_black(ev)
+
+def test_normalize_eval_for_player_white_is_negation_of_black():
+    for score, etype in [(100.0, "cp"), (-150.0, "cp"), (2.0, "mate"), (-3.0, "mate")]:
+        ev = EngineEvaluation(eval_type=etype, score=score, depth=18)
+        assert normalize_eval_for_player(ev, chess.WHITE) == -normalize_eval_for_player(ev, chess.BLACK)
 
 def test_calculate_loss_for_player():
     # Before move: +100 cp for Black. After move: -80 cp for Black.

@@ -40,13 +40,14 @@ class BatchAnalyzer:
         pgn_path = pgn_path or self.config.get("input", {}).get("pgn_path", "data/input/opponent.pgn")
         cfg_target = self.config.get("target_player", {}).get("name", "")
         target_player = target_player if target_player is not None else cfg_target
+        color = self.config.get("target_player", {}).get("color", "black")
 
-        logger.info(f"Starting batch analysis on '{pgn_path}' for player '{target_player}'...")
+        logger.info(f"Starting batch analysis on '{pgn_path}' for player '{target_player}' (color={color})...")
 
-        pgn_load_res = load_pgn_games(pgn_path, target_player=target_player, limit=limit)
+        pgn_load_res = load_pgn_games(pgn_path, target_player=target_player, limit=limit, color=color)
         filtered_games = pgn_load_res.filtered_games
 
-        logger.info(f"Loaded {pgn_load_res.total_games_in_pgn} total games. Filtered {len(filtered_games)} games where '{pgn_load_res.target_player}' played Black.")
+        logger.info(f"Loaded {pgn_load_res.total_games_in_pgn} total games. Filtered {len(filtered_games)} games where '{pgn_load_res.target_player}' played {color}.")
 
         all_move_analyses: List[MoveAnalysisData] = []
 

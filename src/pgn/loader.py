@@ -44,6 +44,7 @@ class LoadPGNResult:
     filtered_games: List[GameRecord]
     skipped_games: List[SkippedGame]
     filter_stats: Dict[str, int]
+    color: str = "black"
 
 def parse_elo(elo_str: str) -> Optional[int]:
     try:
@@ -51,7 +52,7 @@ def parse_elo(elo_str: str) -> Optional[int]:
     except (ValueError, TypeError):
         return None
 
-def load_pgn_games(pgn_path: str, target_player: str = "", limit: Optional[int] = None) -> LoadPGNResult:
+def load_pgn_games(pgn_path: str, target_player: str = "", limit: Optional[int] = None, color: str = "black") -> LoadPGNResult:
     total_in_file = 0
     raw_games: List[chess.pgn.Game] = []
     skipped_games: List[SkippedGame] = []
@@ -80,8 +81,8 @@ def load_pgn_games(pgn_path: str, target_player: str = "", limit: Optional[int] 
                 break
 
     if not target_player and raw_games:
-        target_player = PGNFilter.auto_detect_black_player(raw_games)
-        logger.info(f"Auto-detected target Black player: '{target_player}'")
+        target_player = PGNFilter.auto_detect_player(raw_games, color=color)
+        logger.info(f"Auto-detected target {color} player: '{target_player}'")
 
     filtered_records: List[GameRecord] = []
     not_target_count = 0
@@ -92,12 +93,13 @@ def load_pgn_games(pgn_path: str, target_player: str = "", limit: Optional[int] 
             break
 
         # Check target player
-        if target_player and not PGNFilter.is_target_black(game, target_player):
+        if target_player and not PGNFilter.is_target_color(game, target_player, color=color):
             not_target_count += 1
+            header_key = "White" if color == "white" else "Black"
             skipped_games.append(SkippedGame(
                 index=idx,
                 headers=dict(game.headers),
-                reason=f"Black player '{game.headers.get('Black')}' != target '{target_player}'"
+                reason=f"{header_key} player '{game.headers.get(header_key)}' != target '{target_player}'"
             ))
             continue
 
@@ -153,5 +155,6 @@ def load_pgn_games(pgn_path: str, target_player: str = "", limit: Optional[int] 
         target_player=target_player,
         filtered_games=filtered_records,
         skipped_games=skipped_games,
-        filter_stats=filter_stats
+        filter_stats=filter_stats,
+        color=color
     )

@@ -16,6 +16,7 @@ class OpeningRepertoireItem:
 @dataclass
 class OpponentProfile:
     target_player_name: str
+    target_color: str
     total_games_analyzed: int
     overall_stats: StatisticalSummary
     repertoire: List[OpeningRepertoireItem]
@@ -23,6 +24,7 @@ class OpponentProfile:
     top_problem_clusters: List[ProblemCluster]
     opening_deviations: List[OpeningDeviation]
     critical_positions: List[MoveAnalysisData]
+    time_trouble_summary: Optional[Dict[str, Any]] = None
 
 class ProfileBuilder:
     @staticmethod
@@ -34,6 +36,7 @@ class ProfileBuilder:
         deviations: List[OpeningDeviation]
     ) -> OpponentProfile:
         target_name = pgn_result.target_player
+        color = pgn_result.color
         total_games = len(pgn_result.filtered_games)
 
         # Baseline CPL calculation across all Black moves
@@ -44,7 +47,8 @@ class ProfileBuilder:
             cpl_list=all_cpls,
             results_list=game_results,
             baseline_mean_cpl=0.0,
-            config=config
+            config=config,
+            color=color
         )
 
         baseline_mean_cpl = overall_stats.mean_cpl
@@ -70,7 +74,8 @@ class ProfileBuilder:
                 cpl_list=data["cpls"],
                 results_list=data["results"],
                 baseline_mean_cpl=baseline_mean_cpl,
-                config=config
+                config=config,
+                color=color
             )
             repertoire_items.append(OpeningRepertoireItem(
                 opening_name=data["name"],
@@ -80,6 +85,23 @@ class ProfileBuilder:
 
         repertoire_items.sort(key=lambda r: r.summary.sample_size, reverse=True)
 
+        # Time trouble aggregate (moves with a parsed clock, split by threshold flag)
+        def _bucket_stats(moves: List[MoveAnalysisData]) -> Optional[Dict[str, Any]]:
+            if not moves:
+                return None
+            mistakes = sum(1 for m in moves if m.classification != "GOOD")
+            return {
+                "count": len(moves),
+                "error_rate": mistakes / len(moves),
+                "avg_cpl": sum(m.loss_for_player for m in moves) / len(moves),
+            }
+
+        clocked = [m for m in move_analyses if m.clock_seconds is not None]
+        time_trouble_summary = {
+            "time_trouble": _bucket_stats([m for m in clocked if m.time_pressure]),
+            "normal_time": _bucket_stats([m for m in clocked if not m.time_pressure]),
+        }
+
         # Clusters & Critical positions
         clusters = ErrorClusterer.cluster_mistakes(move_analyses)
         critical_pos = [m for m in move_analyses if m.is_critical]
@@ -87,11 +109,13 @@ class ProfileBuilder:
 
         return OpponentProfile(
             target_player_name=target_name,
+            target_color=color,
             total_games_analyzed=total_games,
             overall_stats=overall_stats,
             repertoire=repertoire_items,
             top_recurring_patterns=patterns[:10],
             top_problem_clusters=clusters[:10],
             opening_deviations=deviations[:20],
-            critical_positions=critical_pos[:20]
+            critical_positions=critical_pos[:20],
+            time_trouble_summary=time_trouble_summary
         )

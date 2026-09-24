@@ -11,7 +11,8 @@ class ErrorAnalyzer:
     def categorize_mistake(
         analysis: MoveAnalysisData,
         board_before: chess.Board,
-        board_after: chess.Board
+        board_after: chess.Board,
+        player_color: chess.Color = chess.BLACK
     ) -> str:
         if analysis.classification == MoveClassification.GOOD:
             return "NONE"
@@ -19,7 +20,7 @@ class ErrorAnalyzer:
         # OPENING errors: within opening plies
         if analysis.phase == "OPENING" and analysis.move_number <= 20:
             # Check if played move hung a piece or missed forced sequence
-            if ErrorAnalyzer._is_hanging_piece(board_after, chess.BLACK):
+            if ErrorAnalyzer._is_hanging_piece(board_after, player_color):
                 return "TACTICAL"
             return "OPENING"
 
@@ -28,7 +29,7 @@ class ErrorAnalyzer:
             return "ENDGAME"
 
         # TACTICAL checks: hanging piece, forks, pins
-        if ErrorAnalyzer._is_hanging_piece(board_after, chess.BLACK):
+        if ErrorAnalyzer._is_hanging_piece(board_after, player_color):
             return "TACTICAL"
 
         # If CPL is huge (e.g. >= 300) in Middlegame, likely calculation/tactical oversight
@@ -38,7 +39,7 @@ class ErrorAnalyzer:
         # Check basic positional heuristics
         if analysis.loss_for_player >= 100:
             # Check pawn structure weakness or passive move
-            if ErrorAnalyzer._created_doubled_or_isolated_pawns(board_before, board_after, chess.BLACK):
+            if ErrorAnalyzer._created_doubled_or_isolated_pawns(board_before, board_after, player_color):
                 return "POSITIONAL"
 
         # Default fallback

@@ -15,7 +15,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "critical_pgn_path": "data/reports/critical_positions.pgn"
     },
     "target_player": {
-        "name": ""
+        "name": "",
+        "color": "black"  # "white", "black", or "both"
     },
     "stockfish": {
         "path": "",
@@ -34,6 +35,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "main_movetime_ms": None,
         "critical_movetime_ms": None,
         "analyze_opening_plies": 20,
+        "time_pressure_threshold_sec": 30,
         "min_sample_size": 8,
         "reliable_sample_size": 20
     },
