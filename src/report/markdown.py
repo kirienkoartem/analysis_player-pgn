@@ -67,7 +67,7 @@ class MarkdownReportGenerator:
             lines.append("No significant opening deviations detected.")
         else:
             for dev in profile.opening_deviations[:10]:
-                lines.append(f"- **Game `{dev.game_id}`** ({dev.eco} {dev.opening}, move {dev.move_number}): Played `{dev.played_san}` instead of best move. CPL loss: {dev.cpl:.1f} cp.")
+                lines.append(f"- **Game `{dev.game_id}`** ({dev.eco} {dev.opening}, move {dev.move_number}): Played `{dev.played_san}` instead of `{dev.best_san}`. CPL loss: {dev.cpl:.1f} cp.")
         lines.append("\n")
 
         lines.append("## 6. Tactical Problems\n")
