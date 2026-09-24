@@ -38,8 +38,8 @@ analysis:
   # search time when set. Remove/null these two keys to go back to
   # pure fixed-depth search once running on faster/dedicated hardware.
   # 13h-deep-run calibration for 1191 games on this host.
-  main_movetime_ms: 500
-  critical_movetime_ms: 1500
+  main_movetime_ms: 360
+  critical_movetime_ms: 1080
 
   # Centipawn-loss thresholds (from the target player's perspective)
   inaccuracy_cp: 50
