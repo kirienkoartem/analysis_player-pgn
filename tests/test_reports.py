@@ -19,7 +19,7 @@ def test_reports_generation(tmp_path):
 
     mock_eval = EngineEvaluation("cp", 0.0, 10)
     mock_pos = MoveAnalysisData(
-        game_id="g1", move_number=5, side="black", san="Nf6", uci="g8f6",
+        game_id="g1", move_number=5, fullmove_number=3, side="black", san="Nf6", uci="g8f6",
         fen_before=chess.STARTING_FEN, fen_after=chess.STARTING_FEN,
         eval_before_white_perspective=mock_eval, eval_after_white_perspective=mock_eval,
         eval_before_black_perspective=0.0, eval_after_black_perspective=-100.0,

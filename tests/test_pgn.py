@@ -4,6 +4,11 @@ import chess.pgn
 from src.pgn.loader import load_pgn_games, parse_elo
 from src.pgn.filter import PGNFilter, normalize_name
 from src.pgn.validator import PGNValidator
+from src.chess.positions import (
+    parse_time_control_base_seconds,
+    classify_time_control,
+    time_pressure_threshold_seconds,
+)
 
 SAMPLE_PGN = """[Event "Tournament 1"]
 [Site "City A"]
@@ -75,3 +80,61 @@ def test_parse_elo():
     assert parse_elo("2100") == 2100
     assert parse_elo("?") is None
     assert parse_elo("") is None
+
+def test_load_pgn_games_date_filter(tmp_path):
+    pgn_file = tmp_path / "test.pgn"
+    pgn_file.write_text(SAMPLE_PGN, encoding="utf-8")
+
+    # Game 1 (2023.01.01) excluded, game 3 (2023.01.03) kept.
+    res = load_pgn_games(str(pgn_file), target_player="Target Player", date_from="2023.01.02")
+    assert len(res.filtered_games) == 1
+    assert res.filtered_games[0].metadata.opening == "French Defense"
+
+def test_load_pgn_games_min_opponent_elo_filter(tmp_path):
+    pgn_file = tmp_path / "test.pgn"
+    pgn_file.write_text(SAMPLE_PGN, encoding="utf-8")
+
+    # Target plays Black in games 1 & 3 -> opponent Elo = WhiteElo.
+    # Game 1 WhiteElo=2000, game 3 has no Elo headers at all (None).
+    res = load_pgn_games(str(pgn_file), target_player="Target Player", min_opponent_elo=1900)
+    assert len(res.filtered_games) == 1
+    assert res.filtered_games[0].metadata.white == "Player White"
+
+    res_none = load_pgn_games(str(pgn_file), target_player="Target Player", min_opponent_elo=2050)
+    assert len(res_none.filtered_games) == 0
+
+def test_load_pgn_games_time_control_filter(tmp_path):
+    pgn_file = tmp_path / "test.pgn"
+    pgn_file.write_text(SAMPLE_PGN, encoding="utf-8")
+
+    # SAMPLE_PGN has no TimeControl header at all -> classified "unknown".
+    res_unknown = load_pgn_games(str(pgn_file), target_player="Target Player", time_control_category="unknown")
+    assert len(res_unknown.filtered_games) == 2
+
+    res_blitz = load_pgn_games(str(pgn_file), target_player="Target Player", time_control_category="blitz")
+    assert len(res_blitz.filtered_games) == 0
+
+def test_parse_time_control_base_seconds():
+    assert parse_time_control_base_seconds("180+2") == 180
+    assert parse_time_control_base_seconds("600") == 600
+    assert parse_time_control_base_seconds("-") is None
+    assert parse_time_control_base_seconds("") is None
+    assert parse_time_control_base_seconds("?") is None
+
+def test_classify_time_control():
+    assert classify_time_control(60) == "bullet"
+    assert classify_time_control(300) == "blitz"
+    assert classify_time_control(900) == "rapid"
+    assert classify_time_control(3600) == "classical"
+    assert classify_time_control(None) == "unknown"
+
+def test_time_pressure_threshold_scales_with_base_time():
+    # Bullet (60s base): 10% = 6s, floored up to 10s.
+    assert time_pressure_threshold_seconds(60) == 10.0
+    # Blitz (300s base): 10% = 30s (matches the old flat default, by design).
+    assert time_pressure_threshold_seconds(300) == 30.0
+    # Classical (1800s base): 10% = 180s - a very different situation from
+    # blitz, which a single flat 30s threshold would have missed entirely.
+    assert time_pressure_threshold_seconds(1800) == 180.0
+    # Unknown/correspondence -> falls back to the flat default.
+    assert time_pressure_threshold_seconds(None) == 30.0

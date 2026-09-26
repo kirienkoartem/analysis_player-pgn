@@ -20,13 +20,13 @@ def test_normalize_eval_for_black():
     eval_cp_white_minus = EngineEvaluation(eval_type="cp", score=-150.0, depth=18)
     assert normalize_eval_for_black(eval_cp_white_minus) == 150.0
 
-    # White perspective mate in +2 -> Black perspective -9980 cp
+    # White perspective mate in +2 -> Black perspective -980 cp
     eval_mate_white = EngineEvaluation(eval_type="mate", score=2.0, depth=18)
-    assert normalize_eval_for_black(eval_mate_white) == -9980.0
+    assert normalize_eval_for_black(eval_mate_white) == -980.0
 
-    # White perspective mate in -3 (Black mates White) -> Black perspective +9970 cp
+    # White perspective mate in -3 (Black mates White) -> Black perspective +970 cp
     eval_mate_black = EngineEvaluation(eval_type="mate", score=-3.0, depth=18)
-    assert normalize_eval_for_black(eval_mate_black) == 9970.0
+    assert normalize_eval_for_black(eval_mate_black) == 970.0
 
 def test_normalize_eval_for_player_white():
     # White perspective +100 cp -> White perspective stays +100 cp
@@ -37,13 +37,50 @@ def test_normalize_eval_for_player_white():
     eval_cp_white_minus = EngineEvaluation(eval_type="cp", score=-150.0, depth=18)
     assert normalize_eval_for_player(eval_cp_white_minus, chess.WHITE) == -150.0
 
-    # White mates in +2 -> great for White (+9980 cp)
+    # White mates in +2 -> great for White (+980 cp)
     eval_mate_white = EngineEvaluation(eval_type="mate", score=2.0, depth=18)
-    assert normalize_eval_for_player(eval_mate_white, chess.WHITE) == 9980.0
+    assert normalize_eval_for_player(eval_mate_white, chess.WHITE) == 980.0
 
-    # Black mates White in -3 -> terrible for White (-9970 cp)
+    # Black mates White in -3 -> terrible for White (-970 cp)
     eval_mate_black = EngineEvaluation(eval_type="mate", score=-3.0, depth=18)
-    assert normalize_eval_for_player(eval_mate_black, chess.WHITE) == -9970.0
+    assert normalize_eval_for_player(eval_mate_black, chess.WHITE) == -970.0
+
+def test_normalize_eval_for_player_clamps_extreme_cp():
+    # A hugely winning eval (e.g. +2500, up a queen and a rook) is clamped to
+    # +/-1000 - two totally winning positions must not register a fake "loss"
+    # between them just because the raw cp gap between them is large.
+    eval_huge_plus = EngineEvaluation(eval_type="cp", score=2500.0, depth=18)
+    assert normalize_eval_for_player(eval_huge_plus, chess.WHITE) == 1000.0
+
+    eval_huge_minus = EngineEvaluation(eval_type="cp", score=-2500.0, depth=18)
+    assert normalize_eval_for_player(eval_huge_minus, chess.WHITE) == -1000.0
+
+def test_evaluate_board_checkmate_is_not_a_blunder_for_the_mating_side():
+    """Regression test for the mate=0 sign-ambiguity bug.
+
+    Delivering checkmate must classify as a GOOD move (loss ~= 0), never as a
+    huge blunder. Previously, evaluating the resulting (game-over) board asked
+    Stockfish for a score, which came back as an ambiguous "mate in 0" whose
+    sign the old code got backwards - checkmating moves were recorded as
+    ~20000 cp blunders.
+    """
+    cfg = {"stockfish": {"path": ""}, "cache": {"db_path": ":memory:"}}
+    import tempfile, os as _os
+    with tempfile.TemporaryDirectory() as d:
+        cfg["cache"]["db_path"] = _os.path.join(d, "cache.sqlite")
+        evaluator = PositionEvaluator(cfg)
+
+        # Fool's mate: White is checkmated. board.turn == WHITE, in check, no moves.
+        board = chess.Board("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
+        assert board.is_checkmate()
+
+        ev = evaluator.evaluate_board(board)
+        assert ev.eval_type == "mate"
+        # White is the side that just got mated -> bad for White -> negative.
+        assert ev.score < 0
+
+        white_cp = normalize_eval_for_player(ev, chess.WHITE)
+        assert white_cp < 0  # correctly bad for White, not ambiguous/positive
 
 def test_normalize_eval_for_player_matches_black_alias():
     for score, etype in [(100.0, "cp"), (-150.0, "cp"), (2.0, "mate"), (-3.0, "mate")]:

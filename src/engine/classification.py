@@ -26,7 +26,8 @@ class EngineEvaluation:
 @dataclass
 class MoveAnalysisData:
     game_id: str
-    move_number: int
+    move_number: int      # absolute ply count in the game (both colors) - internal use, e.g. opening-phase cutoffs
+    fullmove_number: int  # human move number (e.g. "12" as in "12.Nf3" or "12...Nf6") - use this for display
     side: str  # "black"
     san: str
     uci: str
@@ -47,7 +48,12 @@ class MoveAnalysisData:
     is_critical: bool = False
     error_category: str = "NONE"  # TACTICAL/POSITIONAL/CALCULATION/OPENING/ENDGAME/UNCLASSIFIED/NONE
     clock_seconds: Optional[float] = None  # time remaining after this move (from PGN %clk), if present
-    time_pressure: bool = False  # clock_seconds below the configured threshold
+    time_pressure: bool = False  # clock_seconds below the game's own time-control-relative threshold
+    time_control_category: str = "unknown"  # bullet/blitz/rapid/classical/unknown
+
+MATE_CP_EQUIVALENT = 1000.0
+CP_CLAMP = 1000.0
+
 
 def normalize_eval_for_player(engine_eval: EngineEvaluation, color: chess.Color = chess.BLACK) -> float:
     """
@@ -55,18 +61,30 @@ def normalize_eval_for_player(engine_eval: EngineEvaluation, color: chess.Color 
     Stockfish gives score from White perspective (+ means good for White, - means good for Black).
     For the target player's perspective: + always means good for that player.
     White_score stays as-is for White, is negated for Black.
-    Mate scores are capped to +/- 10000 cp equivalents for analysis.
+
+    Both mate and cp scores are capped to +/- MATE_CP_EQUIVALENT / CP_CLAMP. This
+    matters for cp too: without a ceiling, a position that goes from "White is
+    up a queen" (+2500) to "White is up a rook" (+1500) after a mutual-blunder
+    exchange registers as a fake 1000 cp "loss" even though both positions are
+    equally, completely winning. Capping both sides of the comparison removes
+    that artifact.
+
+    IMPORTANT: mate_in must never be exactly 0 here - that value is genuinely
+    ambiguous (which side just got mated cannot be recovered from the number
+    alone). Callers must resolve an already-checkmate board via board state
+    (see PositionEvaluator.evaluate_board) before ever constructing an
+    EngineEvaluation with mate_in == 0.
     """
     if engine_eval.eval_type == "mate":
         mate_in = engine_eval.score
         if mate_in > 0:
-            # White mates Black soon -> White is winning heavily (+10000 cp for White)
-            white_cp = 10000 - (mate_in * 10)
+            # White mates Black soon -> White is winning heavily
+            white_cp = MATE_CP_EQUIVALENT - (mate_in * 10)
         else:
-            # Black mates White soon -> White is losing heavily (-10000 cp for White)
-            white_cp = -10000 - (mate_in * 10)
+            # Black mates White soon -> White is losing heavily
+            white_cp = -MATE_CP_EQUIVALENT - (mate_in * 10)
     else:
-        white_cp = engine_eval.score
+        white_cp = max(-CP_CLAMP, min(CP_CLAMP, engine_eval.score))
 
     return white_cp if color == chess.WHITE else -white_cp
 

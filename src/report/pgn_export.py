@@ -28,9 +28,10 @@ class PGNExporter:
                 game.headers["SetUp"] = "1"
                 game.headers["FEN"] = pos.fen_before
 
+                move_prefix = f"{pos.fullmove_number}." if pos.side == "white" else f"{pos.fullmove_number}..."
                 comment = (
                     f"Game: {pos.game_id}\n"
-                    f"Move: {pos.move_number}... {pos.san}\n"
+                    f"Move: {move_prefix} {pos.san}\n"
                     f"Played: {pos.san} ({pos.uci})\n"
                     f"Best Move: {pos.best_move}\n"
                     f"Centipawn Loss: {pos.loss_for_player:.1f} cp\n"

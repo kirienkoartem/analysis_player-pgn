@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import chess.pgn
 from src.pgn.validator import PGNValidator
 from src.pgn.filter import PGNFilter, normalize_name
+from src.chess.positions import parse_time_control_base_seconds, classify_time_control
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,26 @@ def parse_elo(elo_str: str) -> Optional[int]:
     except (ValueError, TypeError):
         return None
 
-def load_pgn_games(pgn_path: str, target_player: str = "", limit: Optional[int] = None, color: str = "black") -> LoadPGNResult:
+def load_pgn_games(
+    pgn_path: str,
+    target_player: str = "",
+    limit: Optional[int] = None,
+    color: str = "black",
+    time_control_category: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    min_opponent_elo: Optional[int] = None,
+) -> LoadPGNResult:
+    """
+    time_control_category: keep only games classified as this bucket
+        (bullet/blitz/rapid/classical/unknown) - see classify_time_control().
+    date_from / date_to: PGN-style "YYYY.MM.DD" bounds (inclusive), compared
+        lexically. A game whose Date header contains "??" segments (unknown
+        exact date) is excluded whenever either bound is set, since we can't
+        safely compare a partial date.
+    min_opponent_elo: keep only games where the OPPONENT (not the target
+        player) had at least this Elo in that game's PGN headers.
+    """
     total_in_file = 0
     raw_games: List[chess.pgn.Game] = []
     skipped_games: List[SkippedGame] = []
@@ -113,6 +133,49 @@ def load_pgn_games(pgn_path: str, target_player: str = "", limit: Optional[int] 
                 reason=f"Validation error: {error_msg}"
             ))
             continue
+
+        # Time control filter
+        if time_control_category is not None:
+            base_sec = parse_time_control_base_seconds(game.headers.get("TimeControl", ""))
+            if classify_time_control(base_sec) != time_control_category:
+                skipped_games.append(SkippedGame(
+                    index=idx, headers=dict(game.headers),
+                    reason=f"Time control category != '{time_control_category}'"
+                ))
+                continue
+
+        # Date range filter
+        if date_from is not None or date_to is not None:
+            date_str = game.headers.get("Date", "")
+            if "?" in date_str:
+                skipped_games.append(SkippedGame(
+                    index=idx, headers=dict(game.headers),
+                    reason="Unknown/partial Date header, excluded by date filter"
+                ))
+                continue
+            if date_from is not None and date_str < date_from:
+                skipped_games.append(SkippedGame(
+                    index=idx, headers=dict(game.headers),
+                    reason=f"Date '{date_str}' before date_from '{date_from}'"
+                ))
+                continue
+            if date_to is not None and date_str > date_to:
+                skipped_games.append(SkippedGame(
+                    index=idx, headers=dict(game.headers),
+                    reason=f"Date '{date_str}' after date_to '{date_to}'"
+                ))
+                continue
+
+        # Minimum opponent Elo filter
+        if min_opponent_elo is not None:
+            opp_header = "BlackElo" if color == "white" else "WhiteElo"
+            opp_elo = parse_elo(game.headers.get(opp_header, ""))
+            if opp_elo is None or opp_elo < min_opponent_elo:
+                skipped_games.append(SkippedGame(
+                    index=idx, headers=dict(game.headers),
+                    reason=f"Opponent Elo {opp_elo} < min_opponent_elo {min_opponent_elo}"
+                ))
+                continue
 
         # Count plies
         node = game

@@ -1,3 +1,4 @@
+import copy
 import os
 import yaml
 import logging
@@ -17,6 +18,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "target_player": {
         "name": "",
         "color": "black"  # "white", "black", or "both"
+    },
+    "filters": {
+        "time_control_category": None,  # "bullet"/"blitz"/"rapid"/"classical", or None for all
+        "date_from": None,              # "YYYY.MM.DD", or None
+        "date_to": None,                # "YYYY.MM.DD", or None
+        "min_opponent_elo": None        # int, or None
     },
     "stockfish": {
         "path": "",
@@ -52,7 +59,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
-    config = DEFAULT_CONFIG.copy()
+    # Deep copy, not .copy(): a shallow copy shares nested dicts (e.g.
+    # config["analysis"]) with DEFAULT_CONFIG itself, so the merge loop below
+    # would permanently mutate DEFAULT_CONFIG on the first call - any later
+    # load_config() call in the same process (tests, "both"-color reruns)
+    # would then inherit the previous call's yaml overrides as its "defaults".
+    config = copy.deepcopy(DEFAULT_CONFIG)
 
     if os.path.exists(config_path):
         try:

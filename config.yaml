@@ -14,6 +14,20 @@ target_player:
   # color, writing separate report_white.*/report_black.* output files).
   color: "black"
 
+filters:
+  # Restrict analysis to one time control bucket: "bullet"/"blitz"/"rapid"/
+  # "classical", or null for all. Useful because someone preparing for an
+  # OTB classical game doesn't care about the opponent's bullet habits.
+  time_control_category: null
+  # "YYYY.MM.DD" bounds (inclusive), or null. Games with an unknown/partial
+  # Date header are excluded whenever either bound is set.
+  date_from: null
+  date_to: null
+  # Only include games where the OPPONENT's Elo was at least this. Useful to
+  # exclude games against much weaker opposition that inflate CPL/win-rate
+  # numbers in a way that isn't representative of a real, competitive game.
+  min_opponent_elo: null
+
 stockfish:
   path: "/usr/games/stockfish"
   # This container has 4 CPU cores; requesting more Threads than that just

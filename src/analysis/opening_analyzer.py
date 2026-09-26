@@ -9,6 +9,7 @@ class OpeningDeviation:
     eco: str
     opening: str
     move_number: int
+    fullmove_number: int
     played_san: str
     best_san: str
     fen_before: str
@@ -47,6 +48,7 @@ class OpeningAnalyzer:
                         eco=item.eco,
                         opening=item.opening,
                         move_number=item.move_number,
+                        fullmove_number=item.fullmove_number,
                         played_san=item.san,
                         best_san=self._uci_to_san(item.fen_before, item.best_move),
                         fen_before=item.fen_before,

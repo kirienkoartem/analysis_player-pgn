@@ -7,7 +7,8 @@ class ProblemCluster:
     cluster_id: str
     category: str  # TACTICAL, POSITIONAL, CALCULATION, OPENING, ENDGAME, or UNCLASSIFIED
     opening_or_variation: str
-    occurrences: int
+    occurrences: int       # number of qualifying moves (can repeat within one game)
+    games_count: int       # number of DISTINCT games these moves came from
     error_rate: float
     avg_cpl: float
     median_cpl: float
@@ -48,13 +49,19 @@ class ErrorClusterer:
             cpls = [m.loss_for_player for m in m_list]
             avg_cpl = sum(cpls) / occ if occ > 0 else 0.0
             sorted_cpls = sorted(cpls)
-            median_cpl = sorted_cpls[occ // 2] if occ > 0 else 0.0
+            if occ > 0:
+                mid = occ // 2
+                median_cpl = sorted_cpls[mid] if occ % 2 else (sorted_cpls[mid - 1] + sorted_cpls[mid]) / 2
+            else:
+                median_cpl = 0.0
+            games_count = len({m.game_id for m in m_list})
 
             clusters.append(ProblemCluster(
                 cluster_id=f"PROB_{cid:03d}",
                 category=category,
                 opening_or_variation=op_name,
                 occurrences=occ,
+                games_count=games_count,
                 error_rate=error_rate,
                 avg_cpl=avg_cpl,
                 median_cpl=median_cpl,

@@ -2,7 +2,13 @@ import logging
 import chess
 from typing import Dict, Any, List, Optional, Tuple
 from src.pgn.loader import GameRecord
-from src.chess.positions import extract_target_player_moves, TargetMovePosition
+from src.chess.positions import (
+    extract_target_player_moves,
+    TargetMovePosition,
+    parse_time_control_base_seconds,
+    classify_time_control,
+    time_pressure_threshold_seconds,
+)
 from src.chess.openings import OpeningTracker
 from src.chess.phases import phase_detector
 from src.engine.evaluator import PositionEvaluator
@@ -35,16 +41,24 @@ class GameAnalyzer:
         # CPU speed - depth becomes just a cache-key/reporting label.
         self.main_movetime_ms = analysis_cfg.get("main_movetime_ms")
         self.critical_movetime_ms = analysis_cfg.get("critical_movetime_ms")
-        # Absolute seconds-remaining threshold for flagging a move as played
-        # under time pressure. Absolute (not %-of-base-time) because it's a
-        # simple, comparable "how little time was left" signal across the
-        # mixed time controls in a real PGN export (180+2, 300+0, etc.).
-        self.time_pressure_threshold_sec = analysis_cfg.get("time_pressure_threshold_sec", 30)
+        # Fallback flat threshold (seconds) used only when the game's time
+        # control can't be parsed (correspondence, missing header). Otherwise
+        # the threshold scales with the game's own base time - see
+        # time_pressure_threshold_seconds() for why a single flat number
+        # doesn't mean the same thing in bullet vs. classical.
+        self.time_pressure_fallback_sec = analysis_cfg.get("time_pressure_threshold_sec", 30)
+        self.time_pressure_fraction = analysis_cfg.get("time_pressure_fraction", 0.10)
 
     def analyze_game(self, record: GameRecord) -> List[MoveAnalysisData]:
         game_id = record.metadata.game_id
         eco, opening = OpeningTracker.get_eco_and_opening(record.game_node)
         target_moves = extract_target_player_moves(record.game_node, target_color=self.target_color)
+
+        base_seconds = parse_time_control_base_seconds(record.metadata.time_control)
+        tc_category = classify_time_control(base_seconds)
+        tp_threshold = time_pressure_threshold_seconds(
+            base_seconds, fraction=self.time_pressure_fraction, fallback_sec=self.time_pressure_fallback_sec
+        )
 
         move_analyses: List[MoveAnalysisData] = []
 
@@ -101,6 +115,7 @@ class GameAnalyzer:
             analysis_data = MoveAnalysisData(
                 game_id=game_id,
                 move_number=item.move_number,
+                fullmove_number=item.fullmove_number,
                 side=self.side_label,
                 san=item.san,
                 uci=item.uci,
@@ -121,7 +136,8 @@ class GameAnalyzer:
                 is_critical=is_critical,
                 error_category="NONE",
                 clock_seconds=item.clock_seconds,
-                time_pressure=(item.clock_seconds is not None and item.clock_seconds <= self.time_pressure_threshold_sec)
+                time_pressure=(item.clock_seconds is not None and item.clock_seconds <= tp_threshold),
+                time_control_category=tc_category,
             )
             analysis_data.error_category = ErrorAnalyzer.categorize_mistake(
                 analysis_data, board_before, board_after, self.target_color

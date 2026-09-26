@@ -6,3 +6,4 @@ tqdm>=4.65
 pytest>=7.4
 python-dotenv>=1.0
 google-genai>=0.1
+requests>=2.31

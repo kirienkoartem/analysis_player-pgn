@@ -23,6 +23,12 @@ class StatisticalSummary:
     std_cpl: float
     baseline_cpl_diff: float  # Difference from overall baseline mean CPL
 
+def elo_expected_score(own_elo: float, opponent_elo: float) -> float:
+    """Standard Elo expected-score formula: probability-weighted score (0..1)
+    'own_elo' is expected to take against 'opponent_elo' over many games."""
+    return 1.0 / (1.0 + 10 ** ((opponent_elo - own_elo) / 400.0))
+
+
 class StatisticsAggregator:
     @staticmethod
     def classify_sample_size(sample_size: int, config: Optional[Dict[str, Any]] = None) -> SampleConfidenceLevel:

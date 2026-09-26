@@ -27,7 +27,8 @@ class ReportGenerator:
         pgn_result: LoadPGNResult,
         move_analyses: List[MoveAnalysisData],
         patterns: List[RecurringPattern],
-        deviations: List[OpeningDeviation]
+        deviations: List[OpeningDeviation],
+        run_metadata: Dict[str, Any] = None,
     ) -> OpponentProfile:
         logger.info("Building opponent profile from statistical analysis...")
         profile = ProfileBuilder.build_profile(
@@ -47,10 +48,10 @@ class ReportGenerator:
         }
 
         logger.info(f"Generating Markdown report at '{self.report_path}'...")
-        MarkdownReportGenerator.generate_report(profile, self.report_path, llm_notes=llm_notes)
+        MarkdownReportGenerator.generate_report(profile, self.report_path, llm_notes=llm_notes, run_metadata=run_metadata)
 
         logger.info(f"Exporting JSON statistics to '{self.json_path}'...")
-        JSONExporter.export_json(profile, self.json_path)
+        JSONExporter.export_json(profile, self.json_path, run_metadata=run_metadata)
 
         logger.info(f"Exporting critical positions PGN to '{self.critical_pgn_path}'...")
         PGNExporter.export_critical_positions_pgn(profile, self.critical_pgn_path)

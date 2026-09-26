@@ -41,10 +41,17 @@ class BatchAnalyzer:
         cfg_target = self.config.get("target_player", {}).get("name", "")
         target_player = target_player if target_player is not None else cfg_target
         color = self.config.get("target_player", {}).get("color", "black")
+        filters_cfg = self.config.get("filters", {})
 
         logger.info(f"Starting batch analysis on '{pgn_path}' for player '{target_player}' (color={color})...")
 
-        pgn_load_res = load_pgn_games(pgn_path, target_player=target_player, limit=limit, color=color)
+        pgn_load_res = load_pgn_games(
+            pgn_path, target_player=target_player, limit=limit, color=color,
+            time_control_category=filters_cfg.get("time_control_category"),
+            date_from=filters_cfg.get("date_from"),
+            date_to=filters_cfg.get("date_to"),
+            min_opponent_elo=filters_cfg.get("min_opponent_elo"),
+        )
         filtered_games = pgn_load_res.filtered_games
 
         logger.info(f"Loaded {pgn_load_res.total_games_in_pgn} total games. Filtered {len(filtered_games)} games where '{pgn_load_res.target_player}' played {color}.")

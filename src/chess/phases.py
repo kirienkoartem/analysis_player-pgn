@@ -21,10 +21,10 @@ def phase_detector(board: chess.Board, ply_number: int) -> GamePhase:
     """
     Detects game phase based on ply number and remaining non-pawn material.
 
-    Opening: ply <= 24 (12 full moves) unless heavy early tactical trades occur.
-    Middlegame: ply > 24 and non-pawn material > 14 (e.g. queens present or major minor pieces).
-    Early Middlegame: ply 25 to 36 with active development/middle phase.
-    Endgame: total non-pawn material <= 14 or no queens + total non-pawn material <= 20.
+    Opening: ply <= 20 (10 full moves).
+    Early Middlegame: ply 21 to 32.
+    Middlegame: ply > 32 (with sufficient material still on the board).
+    Endgame: total non-pawn material <= 12, or no queens and <= 18.
     """
     if ply_number <= 20:
         return GamePhase.OPENING

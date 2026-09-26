@@ -1,90 +1,94 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
-import chess
+from typing import List, Dict, Any, Tuple
 from src.engine.classification import MoveAnalysisData
-from src.chess.patterns import PatternDetector
+
 
 @dataclass
 class RecurringPattern:
     pattern_id: str
     description: str
-    pawn_structure_fen: str
-    material_key: str
-    occurrences: int
-    played_moves: Dict[str, int]
+    fen_before: str
+    played_san: str
+    best_move: str
+    eco: str
+    opening: str
+    occurrences: int  # == distinct games this exact position+move repeat was found in
+    played_moves: Dict[str, int]  # kept for report/LLM-prompt compatibility: {played_san: occurrences}
     avg_cpl: float
-    mistake_rate: float
+    median_cpl: float
+    mistake_rate: float  # always 1.0 - this dataclass only ever holds confirmed mistakes
     sample_games: List[str]
     critical_positions: List[MoveAnalysisData] = field(default_factory=list)
 
+
 class PatternAnalyzer:
-    """Detects recurring positional structures and decision patterns where opponent repeated similar mistakes."""
+    """Detects a genuinely repeated mistake: the exact same position (FEN) met
+    on multiple, DIFFERENT occasions, with the exact same (wrong) move chosen
+    each time.
+
+    This is deliberately narrower than grouping by loose pawn-structure/material
+    similarity: that approach also matched the natural, mistake-free overlap
+    between games that reach the same opening tabiya (everyone reaches the
+    Nimzo tabiya - that's not a "pattern", it's just the opening), and counted
+    the same game's own moves against itself as "recurring". Exact-position
+    dedup is the standard a claim like "he played X ply/move N twice, in two
+    different games, and lost Y cp both times" needs to hold up.
+    """
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
 
     def detect_recurring_patterns(self, all_move_analyses: List[MoveAnalysisData]) -> List[RecurringPattern]:
-        # Group moves by pawn structure and material
-        structure_groups: Dict[str, List[MoveAnalysisData]] = {}
+        mistakes = [m for m in all_move_analyses if m.classification != "GOOD"]
 
-        for item in all_move_analyses:
-            try:
-                board = chess.Board(item.fen_before)
-                fp = PatternDetector.create_fingerprint(board)
-                key = fp.pawn_skeleton_hash
-                if key not in structure_groups:
-                    structure_groups[key] = []
-                structure_groups[key].append(item)
-            except Exception:
-                continue
+        groups: Dict[Tuple[str, str], List[MoveAnalysisData]] = {}
+        for m in mistakes:
+            key = (m.fen_before, m.san)
+            groups.setdefault(key, []).append(m)
 
         recurring: List[RecurringPattern] = []
         pid = 1
 
-        for struct_key, moves_list in structure_groups.items():
-            if len(moves_list) < 2:  # Must occur at least twice across games
+        for (fen, san), moves_list in groups.items():
+            distinct_games = sorted({m.game_id for m in moves_list})
+            games_count = len(distinct_games)
+            if games_count < 2:  # Must occur in at least 2 DIFFERENT games
                 continue
 
-            parts = struct_key.split("|")
-            pawn_fen = parts[0] if len(parts) > 0 else ""
-            mat_key = parts[1] if len(parts) > 1 else ""
+            cpls = [m.loss_for_player for m in moves_list]
+            avg_cpl = sum(cpls) / len(cpls)
+            sorted_cpls = sorted(cpls)
+            n = len(sorted_cpls)
+            median_cpl = (
+                sorted_cpls[n // 2] if n % 2 else (sorted_cpls[n // 2 - 1] + sorted_cpls[n // 2]) / 2
+            )
+            critical_pos = [m for m in moves_list if m.is_critical]
 
-            played_moves_counter: Dict[str, int] = {}
-            total_cpl = 0.0
-            mistakes_cnt = 0
-            sample_games = []
-            critical_pos = []
+            first = moves_list[0]
+            desc = (
+                f"{first.opening} ({first.eco}), move {first.fullmove_number}: "
+                f"played {san} in {games_count} different games "
+                f"(engine best: {first.best_move or 'n/a'}), avg loss {avg_cpl:.0f} cp"
+            )
 
-            for m in moves_list:
-                played_moves_counter[m.san] = played_moves_counter.get(m.san, 0) + 1
-                total_cpl += m.loss_for_player
-                if m.classification != "GOOD":
-                    mistakes_cnt += 1
-                if m.game_id not in sample_games:
-                    sample_games.append(m.game_id)
-                if m.is_critical:
-                    critical_pos.append(m)
-
-            occ = len(moves_list)
-            avg_cpl = total_cpl / occ
-            mistake_rate = mistakes_cnt / occ
-
-            desc = f"Structure ({mat_key}) - {occ} occurrences, {mistake_rate:.0%} error rate"
-
-            pattern_obj = RecurringPattern(
+            recurring.append(RecurringPattern(
                 pattern_id=f"PAT_{pid:03d}",
                 description=desc,
-                pawn_structure_fen=pawn_fen,
-                material_key=mat_key,
-                occurrences=occ,
-                played_moves=played_moves_counter,
+                fen_before=fen,
+                played_san=san,
+                best_move=first.best_move,
+                eco=first.eco,
+                opening=first.opening,
+                occurrences=games_count,
+                played_moves={san: games_count},
                 avg_cpl=avg_cpl,
-                mistake_rate=mistake_rate,
-                sample_games=sample_games[:10],
-                critical_positions=critical_pos
-            )
-            recurring.append(pattern_obj)
+                median_cpl=median_cpl,
+                mistake_rate=1.0,
+                sample_games=distinct_games[:10],
+                critical_positions=critical_pos,
+            ))
             pid += 1
 
-        # Sort by occurrences and mistake rate
+        # Sort by how many different games it showed up in, then by severity.
         recurring.sort(key=lambda p: (p.occurrences, p.avg_cpl), reverse=True)
         return recurring
