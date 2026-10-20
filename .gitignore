@@ -26,3 +26,4 @@ output/*.pgn
 .pytest_cache/
 .mypy_cache/
 *.db
+output/*.docx
