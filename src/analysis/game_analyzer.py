@@ -20,6 +20,7 @@ from src.engine.classification import (
     classify_move
 )
 from src.analysis.error_analyzer import ErrorAnalyzer
+from src.analysis.themes import position_tags, win_percent_loss, error_motif, mark_after_queen_trade
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,9 @@ class GameAnalyzer:
         # doesn't mean the same thing in bullet vs. classical.
         self.time_pressure_fallback_sec = analysis_cfg.get("time_pressure_threshold_sec", 30)
         self.time_pressure_fraction = analysis_cfg.get("time_pressure_fraction", 0.10)
+        # A "serious" error in winning-chance terms: Lichess calls a 10-point
+        # drop in win% a mistake and 15 a blunder. Used for motif tagging.
+        self.serious_error_wp = analysis_cfg.get("serious_error_wp", 10.0)
 
     def analyze_game(self, record: GameRecord) -> List[MoveAnalysisData]:
         game_id = record.metadata.game_id
@@ -88,6 +92,8 @@ class GameAnalyzer:
             best_move = eval_before_stage1.best_move or ""
             pv = eval_before_stage1.pv
             wdl = eval_before_stage1.wdl
+            final_eval_before = eval_before_stage1
+            final_eval_after = eval_after_stage1
 
             # Stage 2: Deep analysis for critical positions
             if is_critical and self.evaluator.engine.is_available():
@@ -111,6 +117,8 @@ class GameAnalyzer:
                 best_move = eval_before_stage2.best_move or best_move
                 pv = eval_before_stage2.pv
                 wdl = eval_before_stage2.wdl
+                final_eval_before = eval_before_stage2
+                final_eval_after = eval_after_stage2
 
             analysis_data = MoveAnalysisData(
                 game_id=game_id,
@@ -143,6 +151,33 @@ class GameAnalyzer:
                 analysis_data, board_before, board_after, self.target_color
             )
 
+            analysis_data.wp_loss = win_percent_loss(score_before_black, score_after_black)
+            analysis_data.tags = position_tags(
+                board_before, self.target_color, item.move_number, score_before_black,
+                clock_known=item.clock_seconds is not None,
+                time_pressure=analysis_data.time_pressure,
+            )
+            if analysis_data.wp_loss >= self.serious_error_wp:
+                analysis_data.motif = error_motif(
+                    board_before, board_after, self.target_color,
+                    played_uci=item.uci,
+                    best_uci=best_move,
+                    opponent_reply_uci=final_eval_after.pv[0] if final_eval_after.pv else None,
+                    had_mate_before=self._is_mate_for_player(final_eval_before),
+                    has_mate_after=self._is_mate_for_player(final_eval_after),
+                )
+
             move_analyses.append(analysis_data)
 
+        mark_after_queen_trade(
+            [m.tags for m in move_analyses],
+            [bool(item.board_before.pieces(chess.QUEEN, chess.WHITE) or item.board_before.pieces(chess.QUEEN, chess.BLACK))
+             for item in target_moves],
+        )
+
         return move_analyses
+
+    def _is_mate_for_player(self, ev) -> bool:
+        if ev.eval_type != "mate":
+            return False
+        return ev.score > 0 if self.target_color == chess.WHITE else ev.score < 0

@@ -34,7 +34,7 @@ SAMPLE_PGN = """[Event "Tournament 1"]
 [ECO "B01"]
 [Opening "Scandinavian Defense"]
 
-1. e4 d5 2. exd5 Qxd5 1-0
+1. e4 d5 2. exd5 Qxd5 3. Nc3 Qa5 1-0
 
 [Event "Tournament 3"]
 [Site "City C"]
@@ -46,7 +46,7 @@ SAMPLE_PGN = """[Event "Tournament 1"]
 [ECO "C00"]
 [Opening "French Defense"]
 
-1. e4 e6 2. d4 d5 1/2-1/2
+1. e4 e6 2. d4 d5 3. Nc3 Bb4 1/2-1/2
 """
 
 def test_normalize_name():

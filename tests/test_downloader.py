@@ -9,6 +9,7 @@ def _mock_response(text=None, json_data=None, status=200):
     resp.raise_for_status = MagicMock()
     if text is not None:
         resp.text = text
+        resp.iter_content = MagicMock(return_value=iter([text]))
     if json_data is not None:
         resp.json.return_value = json_data
     return resp
@@ -26,6 +27,9 @@ def test_download_lichess_games_requests_pgn_with_clocks_and_opening():
     assert kwargs["params"]["clocks"] == "true"
     assert kwargs["params"]["opening"] == "true"
     assert kwargs["headers"]["Accept"] == "application/x-chess-pgn"
+    # Only standard-chess perf types are requested, never variants.
+    assert "crazyhouse" not in kwargs["params"]["perfType"]
+    assert "blitz" in kwargs["params"]["perfType"]
 
 
 def test_download_chesscom_games_walks_archives_newest_first():
@@ -67,3 +71,32 @@ def test_download_games_writes_output_file(tmp_path):
 def test_download_games_rejects_unknown_source():
     with pytest.raises(ValueError):
         download_games("carlsenbase", "u")
+
+
+def test_download_raises_clear_error_for_unknown_user():
+    from src.pgn.downloader import DownloadError
+    with patch("src.pgn.downloader.requests.get", return_value=_mock_response(text="", status=404)):
+        with pytest.raises(DownloadError):
+            download_lichess_games("no_such_user_xyz")
+
+
+def test_download_chesscom_skips_variant_games():
+    archives_json = {"archives": ["https://api.chess.com/pub/player/u/games/2023/01"]}
+    month = {"games": [
+        {"pgn": "[Event \"Std\"]\n1. e4 *\n", "rules": "chess"},
+        {"pgn": "[Event \"960\"]\n1. e4 *\n", "rules": "chess960"},
+    ]}
+
+    def fake_get(url, headers=None, timeout=None):
+        return _mock_response(json_data=archives_json if url.endswith("archives") else month)
+
+    with patch("src.pgn.downloader.requests.get", side_effect=fake_get):
+        result = download_chesscom_games("U", max_games=10)
+    assert "Std" in result and "960" not in result
+
+
+def test_download_games_raises_on_empty_result():
+    from src.pgn.downloader import DownloadError
+    with patch("src.pgn.downloader.requests.get", return_value=_mock_response(text="   ")):
+        with pytest.raises(DownloadError):
+            download_games("lichess", "someuser")

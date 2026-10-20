@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 from enum import Enum
 import chess
@@ -35,9 +35,12 @@ class MoveAnalysisData:
     fen_after: str
     eval_before_white_perspective: EngineEvaluation
     eval_after_white_perspective: EngineEvaluation
-    eval_before_black_perspective: float  # Normalized score where positive is good for Black
-    eval_after_black_perspective: float   # Normalized score where positive is good for Black
-    loss_for_player: float                # Centipawn loss (positive = drop in Black's score)
+    # Despite the legacy "_black_" names, these two hold the score from the
+    # TARGET player's perspective (positive = good for the player being studied),
+    # whichever color that is.
+    eval_before_black_perspective: float
+    eval_after_black_perspective: float
+    loss_for_player: float                # Centipawn loss for the target player (clamped scale)
     best_move: str
     classification: MoveClassification
     phase: str
@@ -50,6 +53,9 @@ class MoveAnalysisData:
     clock_seconds: Optional[float] = None  # time remaining after this move (from PGN %clk), if present
     time_pressure: bool = False  # clock_seconds below the game's own time-control-relative threshold
     time_control_category: str = "unknown"  # bullet/blitz/rapid/classical/unknown
+    wp_loss: float = 0.0  # drop in winning chances (0..100, Lichess formula) - see analysis/themes.py
+    tags: List[str] = field(default_factory=list)  # position themes, see analysis/themes.TAGS
+    motif: str = "NONE"  # nature of a serious error, see analysis/themes.MOTIFS; NONE if not an error
 
 MATE_CP_EQUIVALENT = 1000.0
 CP_CLAMP = 1000.0
