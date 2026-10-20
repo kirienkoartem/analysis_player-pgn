@@ -371,7 +371,7 @@ def apply_pooled(players):
 
 
 # themes a player can actually steer a game toward or away from
-ACTIONABLE_TAGS = [t for t in CMP_TAGS if not t.startswith(("phase:opening", "ctx:", "time:"))]
+ACTIONABLE_TAGS = [t for t in CMP_TAGS if not t.startswith(("phase:", "ctx:", "time:"))]
 
 
 def theme_rate(p, tag):
@@ -397,7 +397,7 @@ def describe(s):
             f"при ожидаемых {pct(s.reference_error_rate, 1)} для таких позиций")
 
 def weak_list(p, levels=("weak",)):
-    out = [s for s in flatten(p.themes) if verdict_level(s) in levels and s.tag != "phase:opening"]
+    out = [s for s in flatten(p.themes) if verdict_level(s) in levels and not s.tag.startswith("phase:")]
     out.sort(key=lambda s: -s.excess_errors)
     return out
 
@@ -523,8 +523,16 @@ def dossier(p, me):
          "положительная — дебют даёт ему преимущество, отрицательная — приводит к худшей позиции. Выборки в линиях небольшие: "
          "ориентируйтесь на повторяющиеся линии, а не на отдельный процент.")
     me_b = group_games(me, "black", lambda s, m: line_name(m))
-    for first, reply, label in (("e4", "c5", "1.e4 — вы отвечаете c5"), ("d4", "Nf6", "1.d4 — вы отвечаете Nf6")):
-        flt = lambda s, m, first=first, reply=reply: len(s) > 1 and s[0] == first and s[1] == reply
+    first_moves = group_games(p, "white", lambda s, m: s[0] if s else None)
+    branches = [("e4", "c5", "1.e4 — вы отвечаете c5"), ("d4", "Nf6", "1.d4 — вы отвечаете Nf6")]
+    for fm, v in sorted(first_moves.items(), key=lambda kv: -kv[1]["n"]):
+        if fm not in ("e4", "d4") and v["n"] >= 15 and v["n"] >= 0.2 * len(p.metas["white"]):
+            branches.append((fm, None, f"1.{fm} — его основной ход (ответ на него выберите заранее)"))
+    for first, reply, label in branches:
+        if reply is None:
+            flt = lambda s, m, first=first: s[:1] == [first]
+        else:
+            flt = lambda s, m, first=first, reply=reply: len(s) > 1 and s[0] == first and s[1] == reply
         g_all = group_games(p, "white", lambda s, m, first=first: fmt_line(s, 6), lambda s, m, first=first: s[:1] == [first])
         n_branch = sum(g["n"] for g in g_all.values())
         if n_branch == 0:
@@ -661,13 +669,29 @@ def dossier(p, me):
                      f"{n_nc6 and sum(g['n'] for g in ital.values()) or 0} раз; играйте по плану, не гонитесь за теорией.")
     for tag, so, su, vo, vu in steer[:4]:
         items.append(f"ВЕСТИ ПАРТИЮ В: {TAGS[tag].lower()} — у него {pct(so.error_rate, 1)} ошибок при ожидаемых {pct(so.reference_error_rate, 1)}"
-                     + (f"; у вас здесь {pct(su.error_rate, 1)} ({vlabel(vu)})." if su else "."))
+                     + ((f"; у вас здесь {pct(su.error_rate, 1)}" + (" — выше, чем у него, поэтому играйте здесь внимательно, побеждает тот, кто аккуратнее." if su.error_rate > so.error_rate * 1.1 else " — не хуже, чем у него.")) if su else "."))
     for tag, so, su, vo, vu in opp_strong[:3]:
         items.append(f"ИЗБЕГАТЬ: {TAGS[tag].lower()} — это его сильная сторона ({pct(so.error_rate, 1)} ошибок при ожидаемых {pct(so.reference_error_rate, 1)}).")
     for tag, so, su, vo, vu in avoid_me[:3]:
         items.append(f"ИЗБЕГАТЬ ДЛЯ СЕБЯ: {TAGS[tag].lower()} — ваша слабость ({pct(su.error_rate, 1)} ошибок при ожидаемых {pct(su.reference_error_rate, 1)}), а у него по этой теме проблем нет.")
     for tag, so, su, vo, vu in mutual[:2]:
         items.append(f"ОБОЮДНАЯ СЛАБОСТЬ: {TAGS[tag].lower()} — слабо у обоих; исход зависит от того, кто аккуратнее считает.")
+    for rk, rv in sorted(rep.items(), key=lambda kv: -kv[1]["n"])[:2]:
+        mu = me_rep.get(rk)
+        if mu and mu["n"] >= 10 and rv["n"] >= 10:
+            if mu["score"] < 0.45:
+                items.append(f"Ответ 1…{rk} — его основной против 1.e4 ({pct(rv['n'] / max(1, n_e4))} партий). Ваш счёт белыми против него всего "
+                             f"{sc(mu['score'])} (n={mu['n']}) — потратьте на эту структуру основное время подготовки.")
+            elif mu["score"] >= 0.6:
+                items.append(f"Ответ 1…{rk} — его основной против 1.e4; ваш счёт белыми против него хороший: {sc(mu['score'])} (n={mu['n']}) — держите этот путь.")
+    me_first = group_games(me, "black", lambda s, m: s[0] if s else None)
+    for fm, v in sorted(first_moves.items(), key=lambda kv: -kv[1]["n"])[:2]:
+        mu = me_first.get(fm)
+        if mu and mu["n"] >= 10 and v["n"] >= 15:
+            if mu["score"] < 0.45:
+                items.append(f"Первый ход 1.{fm} — его основной ({pct(v['n'] / len(p.metas['white']))} партий). Ваш счёт чёрными против 1.{fm} — {sc(mu['score'])} (n={mu['n']}): повторите эту структуру заранее.")
+            elif mu["score"] >= 0.6:
+                items.append(f"Первый ход 1.{fm} — его основной; ваш счёт чёрными против него хороший: {sc(mu['score'])} (n={mu['n']}).")
     for tag, text in (
         ("ctx:losing", "Если он окажется хуже, защищается слабее ожидаемого — наращивайте давление и не спешите упрощать."),
         ("ctx:better", "Не всегда реализует небольшой перевес — если вы немного хуже, держитесь и усложняйте: шанс на возврат реален."),
@@ -676,6 +700,9 @@ def dossier(p, me):
         cs = p.theme_by_tag.get(tag)
         if cs and verdict_level(cs) in ("weak", "trend_weak"):
             items.append(text + f" ({pct(cs.error_rate, 1)} ошибок при ожидаемых {pct(cs.reference_error_rate, 1)}, {cs.moves} ходов.)")
+    if len(tl) >= 5 and len(tl) >= 0.15 * max(1, len(losses)):
+        items.append(f"Часто проигрывает по времени: {len(tl)} из {len(losses)} поражений, из них {len(oc.time_losses_not_worse)} — в не худшей позиции. "
+                     "Играйте в своём темпе и не тратьте время на ранних ходах — запас часов часто решает.")
     tp = p.theme_by_tag.get("time:pressure")
     if tp and tp.moves >= 20:
         items.append(f"Часы: в цейтноте он ошибается в {pct(tp.error_rate, 1)} ходов (в нормальное время — {pct(tp.reference_error_rate, 1)}). "
@@ -689,6 +716,36 @@ def dossier(p, me):
     p.plan_items = items
     p.steer = steer; p.avoid_me = avoid_me; p.mutual = mutual; p.opp_strong = opp_strong
     BREAK()
+
+def opp_pool(opps, tag):
+    e = n = 0
+    for o in opps:
+        t = o.theme_by_tag.get(tag)
+        if t:
+            e += t.errors; n += t.moves
+    return e, n
+
+
+def abs_gap(me, opps, tag):
+    """Your absolute error rate in a theme vs the opponents' pooled rate."""
+    t = me.theme_by_tag.get(tag)
+    if not t or t.moves < 100:
+        return None
+    e, n = opp_pool(opps, tag)
+    if n < 200 or e == 0:
+        return None
+    oe = sum(o.errors for o in opps); on = sum(o.n_moves for o in opps)
+    overall_ratio = me.err_rate / (oe / on)
+    rate_o = e / n
+    ratio = t.error_rate / rate_o
+    return dict(t=t, rate_me=t.error_rate, rate_opp=rate_o, ratio=ratio, rel=ratio / overall_ratio,
+                p=two_proportion_p_value(t.errors, t.moves, e, n), excess=t.errors - t.moves * rate_o)
+
+
+def conv_rate(p):
+    won = sum(1 for g in p.outcomes.games if g.max_eval >= 300)
+    return (len(p.outcomes.blown_wins) / won if won else 0.0), won
+
 
 # ----------------------------------------------------------------- self analysis
 def self_section(me, opps):
@@ -720,7 +777,8 @@ def self_section(me, opps):
         PARA("Подтверждённые и вероятные слабости:")
         BUL([describe(s) + f" — {vlabel(verdict_level(s))}." for s in weak])
     else:
-        PARA("Статистически значимых провалов в конкретных типах позиций нет: ошибки распределены равномерно — главный резерв в общей точности и тактике.")
+        PARA("Профиль ваших ошибок по типам позиций примерно повторяет профиль соперников: ошибок больше везде, а не в одном месте, поэтому «провала» "
+             "в одной теме нет — резерв в общей точности, тактике и времени (разделы 5–6 и сравнение с соперниками).")
     if strong:
         PARA("Сильные стороны (можно сознательно вести туда партии):")
         BUL([describe(s) for s in strong[:5]])
@@ -769,30 +827,65 @@ def self_section(me, opps):
 
     # training plan
     H2("6. Что тренировать в первую очередь")
-    prio = []
-    for s in weak_list(me, ("weak", "trend_weak")):
-        if s.tag in KB:
-            prio.append((s.tag, s.excess_errors, f"{describe(s)}."))
-    if top and top in MOTIF_ADVICE:
-        prio.append((f"motif:{top}", max(1, mot[top] * 0.25), f"{MOTIFS[top]} — {pct(mot[top] / mot_total)} серьёзных ошибок."))
+    prio, seen = [], set()
+    for st in weak_list(me, ("weak", "trend_weak")):
+        if st.tag in KB:
+            prio.append((st.tag, st.excess_errors, f"{describe(st)}."))
+            seen.add(st.tag)
+    for tag in KB:
+        if tag in seen or tag.startswith("phase:"):
+            continue
+        g = abs_gap(me, opps, tag)
+        if g and g["rel"] >= 1.25 and g["p"] is not None and g["p"] < 0.01:
+            prio.append((tag, g["excess"] * 0.8,
+                         f"{TAGS[tag]}: у вас {pct(g['rate_me'], 1)} серьёзных ошибок на ход против {pct(g['rate_opp'], 1)} у соперников в среднем "
+                         f"({g['t'].moves} ходов; с поправкой на ваш общий уровень вы хуже в {g['rel']:.1f} раза)."))
+            seen.add(tag)
+    oc2 = me.outcomes
+    n_g = me.n_games
+    if len(oc2.time_losses) >= 8 and len(oc2.time_losses) / n_g >= 0.07:
+        prio.append(("outcome:time", len(oc2.time_losses) * 1.0,
+                     f"По времени проиграно {len(oc2.time_losses)} партий из {n_g} ({pct(len(oc2.time_losses) / n_g)}), "
+                     f"из них {len(oc2.time_losses_not_worse)} — в не худшей позиции."))
+    my_conv, won = conv_rate(me)
+    opp_conv = statistics.mean(conv_rate(o)[0] for o in opps)
+    if won >= 40 and my_conv >= opp_conv + 0.04:
+        prio.append(("outcome:conv", (my_conv - opp_conv) * won,
+                     f"Выигранная позиция (≥ +3) не доведена до победы в {pct(my_conv)} случаев ({len(oc2.blown_wins)} из {won}); "
+                     f"у соперников в среднем {pct(opp_conv)}."))
+    tact = (mot.get("allowed_tactic", 0) + mot.get("missed_tactic", 0)) / mot_total
+    if tact >= 0.4:
+        prio.append(("outcome:tactics", tact * 60,
+                     f"{pct(tact)} ваших серьёзных ошибок — тактические: зевок фигуры или удара — {pct(mot.get('allowed_tactic', 0) / mot_total)}, "
+                     f"упущенный удар — {pct(mot.get('missed_tactic', 0) / mot_total)}."))
+    elif top == "positional":
+        prio.append(("motif:positional", max(1, mot["positional"] * 0.25), f"{MOTIFS['positional']} — {pct(mot['positional'] / mot_total)} серьёзных ошибок."))
     prio.sort(key=lambda t: -t[1])
     me.prio = prio
     n = 0
-    for tag, ex, evidence in prio[:6]:
+    for key, ex, evidence in prio[:6]:
         n += 1
-        if tag.startswith("motif:"):
-            H3(f"Приоритет {n}: " + {"allowed_tactic": "тактическая внимательность (зевки)", "missed_tactic": "поиск тактических ударов",
-                                      "missed_mate": "матовые комбинации", "positional": "позиционное понимание и планирование"}[tag.split(":")[1]])
-            BUL([evidence, MOTIF_ADVICE[tag.split(":")[1]]])
+        if key == "outcome:time":
+            H3(f"Приоритет {n}: управление временем")
+            BUL([f"Основание: {evidence}"] + KB["time:pressure"][1])
+        elif key == "outcome:conv":
+            H3(f"Приоритет {n}: реализация преимущества")
+            BUL([f"Основание: {evidence}"] + KB["ctx:winning"][1] + ["Задачи Lichess по теме «crushing» и «advantage»: 10–15 в день."])
+        elif key == "outcome:tactics":
+            H3(f"Приоритет {n}: тактическая внимательность")
+            BUL([f"Основание: {evidence}", MOTIF_ADVICE["allowed_tactic"], MOTIF_ADVICE["missed_tactic"]])
+        elif key.startswith("motif:"):
+            H3(f"Приоритет {n}: позиционное понимание и планирование")
+            BUL([f"Основание: {evidence}", MOTIF_ADVICE["positional"]])
         else:
-            title, steps, theme = KB[tag]
+            title, steps, theme = KB[key]
             H3(f"Приоритет {n}: {title}")
             BUL([f"Основание: {evidence}"] + steps + [f"Задачи Lichess по теме «{theme}»: 10–15 в день."])
     if not prio:
         PARA("Явных провалов нет. Приоритеты: тактическая внимательность (проверка шахов/взятий/угроз), расчёт 3–4 ходов и разбор своих проигрышей.")
     H3("План на 14 дней")
     rows = [[C("Каждый день"), C("15 мин"), C("Тактика: задачи на проверку «шахи–взятия–угрозы», 10–15 задач по слабым темам")],
-            [C("Пн / Ср / Пт"), C("30 мин"), C("Эндшпильный блок по приоритетам выше (по одной теме за занятие) + 2 позиции с проверкой в Lichess-практике")],
+            [C("Пн / Ср / Пт"), C("30 мин"), C("Приоритеты 1, 2, 3 из списка выше — по одному на занятие: теория 10 минут + 20 минут практики (задачи/позиции в Lichess-практике)")],
             [C("Вт / Чт"), C("40 мин"), C("Разбор 2 своих партий: найти решающую ошибку, записать причину; сверить дебют с базой")],
             [C("Сб"), C("45 мин"), C("Дебют: прогнать главные линии против соперников турнира (см. досье), проверить план в итальянской/сицилианской")],
             [C("Вс"), C("60 мин"), C("2–3 партии с контролем 10+0 как репетиция; после — разбор только критических моментов")]]
@@ -820,6 +913,22 @@ def comparison_section(me, opps):
     TABLE(header, rows, w)
     NOTE("В скобках — число ходов в выборке. Абсолютные числа не сравнивайте напрямую между игроками разного рейтинга и контроля времени: "
          "соперники сильнее вас, поэтому их общий уровень ошибок ниже; смотрите на цвет.")
+    H2("Где вы ошибаетесь чаще соперников")
+    oe = sum(o.errors for o in opps); on = sum(o.n_moves for o in opps)
+    PARA(f"Ваш общий уровень — {me.err_rate * 100:.1f} серьёзных ошибок на 100 ходов против {oe / on * 100:.1f} у соперников в среднем "
+         f"(в {me.err_rate / (oe / on):.2f} раза чаще). Колонка «С поправкой» показывает, насколько тема хуже для вас, чем следует из этой общей разницы: "
+         "значения выше 1,25 — ваша относительная слабость.")
+    rows = []
+    for tag in CMP_TAGS:
+        g = abs_gap(me, opps, tag)
+        if not g:
+            continue
+        bad = g["rel"] >= 1.25 and g["p"] is not None and g["p"] < 0.01
+        good = g["rel"] <= 0.8 and g["p"] is not None and g["p"] < 0.05
+        fill = RED if bad else (GREEN if good else None)
+        rows.append([C(TAGS[tag]), C(f"{pct(g['rate_me'], 1)} ({g['t'].moves})"), C(pct(g["rate_opp"], 1)), C(f"{g['ratio']:.2f}×"),
+                     C(f"{g['rel']:.2f}", fill, bold=bool(fill)), C("хуже" if bad else ("лучше" if good else "—"), fill)])
+    TABLE(["Тема", "Вы (ходов)", "Соперники в среднем", "Во сколько раз чаще", "С поправкой", "Вывод"], rows, [3300, 1400, 1500, 1200, 1100, 860])
     H2("Общий уровень точности")
     rows = []
     for p in people:
